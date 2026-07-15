@@ -149,7 +149,7 @@ async function assertMinimalInitialRender(page) {
     "The full-screen canvas must preserve equal unit scale."
   );
   assert.ok(Math.abs(e1.x2 - e1.x1) <= 70, "The default integer grid cells must be compact.");
-  await assertIntegerGridGeometry(page);
+  await assertHalfUnitGridGeometry(page);
 
   assert.equal(await page.locator("#basis-first-x").getAttribute("inputmode"), "numeric");
   assert.equal(await page.locator("#vector-x").getAttribute("inputmode"), "numeric");
@@ -177,6 +177,13 @@ async function assertThemeWorkflow(page) {
     /dark/,
     "The default theme must expose the dark color scheme to native controls."
   );
+  assert.deepEqual(darkPalette, {
+    plotBackground: "rgb(10, 17, 25)",
+    controlBackground: "rgba(15, 25, 36, 0.82)",
+    inputBackground: "rgba(6, 12, 18, 0.72)",
+    minorGridStroke: "rgba(128, 153, 175, 0.13)",
+    gridStroke: "rgba(88, 197, 189, 0.22)"
+  });
 
   await toggle.click();
   assert.equal(await root.getAttribute("data-theme"), "light");
@@ -185,7 +192,15 @@ async function assertThemeWorkflow(page) {
   assert.notEqual(lightLabel, initialLabel, "The theme toggle label must describe the next theme.");
   assert.match(lightLabel ?? "", /dark/i);
   assert.match(await root.evaluate((node) => getComputedStyle(node).colorScheme), /light/);
+  await page.waitForTimeout(180);
   const lightPalette = await readThemePalette(page);
+  assert.deepEqual(lightPalette, {
+    plotBackground: "rgb(251, 250, 246)",
+    controlBackground: "rgba(255, 255, 252, 0.86)",
+    inputBackground: "rgba(247, 249, 248, 0.96)",
+    minorGridStroke: "rgba(66, 88, 103, 0.12)",
+    gridStroke: "rgba(25, 127, 121, 0.2)"
+  });
   assert.notEqual(
     lightPalette.plotBackground,
     darkPalette.plotBackground,
@@ -206,7 +221,10 @@ async function assertThemeWorkflow(page) {
 async function readThemePalette(page) {
   return page.evaluate(() => ({
     plotBackground: getComputedStyle(document.querySelector(".plot-stage")).backgroundColor,
-    controlBackground: getComputedStyle(document.querySelector(".control-section")).backgroundColor
+    controlBackground: getComputedStyle(document.querySelector(".control-section")).backgroundColor,
+    inputBackground: getComputedStyle(document.querySelector('input[type="text"]')).backgroundColor,
+    minorGridStroke: getComputedStyle(document.querySelector('[data-grid-level="minor"]')).stroke,
+    gridStroke: getComputedStyle(document.querySelector('[data-grid-level="major"]')).stroke
   }));
 }
 
@@ -462,31 +480,60 @@ async function assertResponsiveCanvas(page) {
   }
 }
 
-async function assertIntegerGridGeometry(page) {
+async function assertHalfUnitGridGeometry(page) {
   const result = await page.locator("#basis-plot").evaluate((svg) => {
-    const grid = svg.querySelector('[data-layer="grid"] path');
+    const grids = [...svg.querySelectorAll('[data-layer="grid"] path[data-grid-level]')];
     const e1 = svg.querySelector('[data-arrow="basis-e1"]');
     const e2 = svg.querySelector('[data-arrow="basis-e2"]');
-    if (!grid || !e1 || !e2) {
+    if (grids.length !== 2 || !e1 || !e2) {
       return null;
     }
     const originX = Number(e1.getAttribute("x1"));
     const originY = Number(e1.getAttribute("y1"));
     const unitX = Number(e1.getAttribute("x2")) - originX;
     const unitY = Number(e2.getAttribute("y2")) - Number(e2.getAttribute("y1"));
-    const commands = [...(grid.getAttribute("d") ?? "").matchAll(
-      /M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)/g
-    )].map((match) => match.slice(1).map(Number));
+    const commands = grids.flatMap((grid) =>
+      [...(grid.getAttribute("d") ?? "").matchAll(
+        /M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)/g
+      )].map((match) => ({
+        level: grid.getAttribute("data-grid-level"),
+        points: match.slice(1).map(Number)
+      }))
+    );
+    const coordinateOf = ({ points: [x1, y1, x2, y2] }) =>
+      x1 === x2 ? (x1 - originX) / unitX : (y1 - originY) / unitY;
     return {
       count: commands.length,
-      integral: commands.every(([x1, y1, x2, y2]) => {
-        const coordinate = x1 === x2 ? (x1 - originX) / unitX : (y1 - originY) / unitY;
-        return Math.abs(coordinate - Math.round(coordinate)) < 1e-3;
-      })
+      halfIntegral: commands.every((command) => {
+        const coordinate = coordinateOf(command);
+        return Math.abs(coordinate * 2 - Math.round(coordinate * 2)) < 1e-3;
+      }),
+      minorClassified: commands
+        .filter(({ level }) => level === "minor")
+        .every((command) => {
+          const coordinate = coordinateOf(command);
+          return Math.abs(coordinate - Math.round(coordinate)) > 1e-3;
+        }),
+      majorClassified: commands
+        .filter(({ level }) => level === "major")
+        .every((command) => {
+          const coordinate = coordinateOf(command);
+          return Math.abs(coordinate - Math.round(coordinate)) < 1e-3;
+        }),
+      minorCount: commands.filter(({ level }) => level === "minor").length,
+      majorCount: commands.filter(({ level }) => level === "major").length,
+      minorWidth: Number(grids.find((grid) => grid.getAttribute("data-grid-level") === "minor")
+        ?.getAttribute("stroke-width")),
+      majorWidth: Number(grids.find((grid) => grid.getAttribute("data-grid-level") === "major")
+        ?.getAttribute("stroke-width"))
     };
   });
-  assert.ok(result && result.count > 10);
-  assert.equal(result.integral, true, "Every rendered grid line must represent an integer.");
+  assert.ok(result && result.count > 20);
+  assert.equal(result.halfIntegral, true, "Every rendered grid line must use half-unit spacing.");
+  assert.ok(result.minorCount > 0 && result.majorCount > 0);
+  assert.equal(result.minorClassified, true, "Minor grid lines must represent half-integers.");
+  assert.equal(result.majorClassified, true, "Major grid lines must represent integers.");
+  assert.ok(result.majorWidth > result.minorWidth, "Integer grid lines must remain stronger.");
 }
 
 async function setBasis(page, [firstX, firstY, secondX, secondY]) {

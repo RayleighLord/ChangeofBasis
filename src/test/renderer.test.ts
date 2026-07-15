@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { normalizeRational } from "../math/rational";
 import {
+  computeHalfUnitGridTicks,
   computeIntegerGridTicks,
   expandPlotBoundsToAspect,
   scaleRationalVectorForRendering
@@ -49,28 +50,50 @@ describe("responsive plotting bounds", () => {
   });
 });
 
-describe("integer Cartesian grid", () => {
-  it("uses every integer in the fixed default range", () => {
-    expect(computeIntegerGridTicks(-4, 4)).toEqual([-4, -3, -2, -1, 0, 1, 2, 3, 4]);
+describe("half-unit Cartesian grid", () => {
+  it("places a minor half-unit line between every pair of integer lines", () => {
+    expect(computeHalfUnitGridTicks(-2, 2)).toEqual([
+      -2,
+      -1.5,
+      -1,
+      -0.5,
+      0,
+      0.5,
+      1,
+      1.5,
+      2
+    ]);
   });
 
-  it("never introduces fractional grid coordinates", () => {
-    const ticks = computeIntegerGridTicks(-2.75, 3.4);
+  it("never introduces coordinates finer than one half", () => {
+    const ticks = computeHalfUnitGridTicks(-2.75, 3.4);
 
-    expect(ticks).toEqual([-2, -1, 0, 1, 2, 3]);
-    expect(ticks.every(Number.isInteger)).toBe(true);
+    expect(ticks).toEqual([-2.5, -2, -1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5, 3]);
+    expect(ticks.every((tick) => Number.isInteger(tick * 2))).toBe(true);
   });
 
   it("stays bounded and finite for enormous ranges", () => {
-    const ticks = computeIntegerGridTicks(-1e308, 1e308, 17);
+    const ticks = computeHalfUnitGridTicks(-1e308, 1e308, 17);
 
     expect(ticks.length).toBeGreaterThan(0);
     expect(ticks.length).toBeLessThanOrEqual(17);
     expect(ticks.every((tick) => Number.isFinite(tick) && Number.isInteger(tick))).toBe(true);
   });
 
-  it("returns no lines when a range contains no integer", () => {
-    expect(computeIntegerGridTicks(0.1, 0.9)).toEqual([]);
+  it("falls back safely when half-unit indices exceed safe integer precision", () => {
+    const ticks = computeHalfUnitGridTicks(1e16, 1e16 + 16, 17);
+
+    expect(ticks.length).toBeGreaterThan(0);
+    expect(ticks.length).toBeLessThanOrEqual(17);
+    expect(ticks.every(Number.isFinite)).toBe(true);
+  });
+
+  it("retains a half-unit line in a range containing no integer", () => {
+    expect(computeHalfUnitGridTicks(0.1, 0.9)).toEqual([0.5]);
+  });
+
+  it("retains the bounded integer helper used for wide-range fallback", () => {
+    expect(computeIntegerGridTicks(-4, 4)).toEqual([-4, -3, -2, -1, 0, 1, 2, 3, 4]);
   });
 });
 

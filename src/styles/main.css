@@ -1,97 +1,103 @@
 :root {
   color-scheme: dark;
-  --page-ink: #e8eef6;
-  --muted-ink: #9fb0c2;
-  --rail-surface: rgba(17, 24, 33, 0.9);
-  --rail-border: rgba(159, 177, 196, 0.22);
-  --section-border: rgba(159, 177, 196, 0.14);
-  --plot-surface: #0d141c;
-  --frame-stroke: rgba(173, 195, 217, 0.22);
-  --grid-stroke: rgba(132, 161, 190, 0.13);
-  --axis-stroke: rgba(211, 222, 234, 0.48);
-  --axis-label: rgba(211, 222, 234, 0.76);
+  --page-ink: #eef4f8;
+  --muted-ink: #93a4b5;
+  --rail-surface: rgba(15, 25, 36, 0.82);
+  --rail-border: rgba(153, 176, 196, 0.2);
+  --section-border: rgba(153, 176, 196, 0.2);
+  --plot-surface: #0a1119;
+  --frame-stroke: rgba(153, 176, 196, 0.2);
+  --grid-minor-stroke: rgba(128, 153, 175, 0.13);
+  --grid-stroke: rgba(88, 197, 189, 0.22);
+  --axis-stroke: rgba(210, 224, 235, 0.7);
+  --axis-label: rgba(210, 224, 235, 0.7);
   --standard-first: #1b7f5a;
   --standard-second: #c4454d;
   --prime-first: #2f6fdb;
   --prime-second: #7b4db3;
   --selected-vector: #f5f7fa;
-  --focus: #64b5f6;
-  --scrollbar-thumb: rgba(159, 177, 196, 0.34);
-  --panel-shadow-strong: rgba(0, 0, 0, 0.38);
-  --panel-shadow-soft: rgba(0, 0, 0, 0.22);
-  --prompt-border: rgba(159, 177, 196, 0.2);
-  --prompt-surface: rgba(17, 24, 33, 0.9);
-  --soft-surface: rgba(255, 255, 255, 0.045);
-  --input-border: rgba(176, 193, 210, 0.2);
-  --input-surface: rgba(7, 12, 18, 0.72);
-  --input-hover-border: rgba(126, 185, 235, 0.42);
-  --input-hover-surface: rgba(12, 19, 27, 0.94);
-  --invalid-border: rgba(255, 119, 131, 0.7);
-  --invalid-halo: rgba(255, 119, 131, 0.12);
-  --button-ink: #ffffff;
-  --button-surface: #2f78ae;
-  --button-hover-surface: #3b89c2;
-  --ghost-surface: rgba(174, 194, 214, 0.11);
-  --ghost-hover-surface: rgba(174, 194, 214, 0.18);
-  --focus-halo: rgba(13, 20, 28, 0.96);
-  --error-ink: #ff9ba5;
-  --row-hover-surface: rgba(174, 194, 214, 0.07);
-  --toggle-off: rgba(159, 177, 196, 0.3);
-  --toggle-inset: rgba(5, 10, 15, 0.22);
-  --toggle-knob: #f8fafc;
+  --focus: #58c5bd;
+  --scrollbar-thumb: rgba(153, 176, 196, 0.34);
+  --panel-shadow-strong: rgba(0, 0, 0, 0.36);
+  --panel-shadow-soft: rgba(0, 0, 0, 0.24);
+  --prompt-border: rgba(153, 176, 196, 0.2);
+  --prompt-surface: rgba(18, 29, 41, 0.84);
+  --soft-surface: rgba(29, 43, 57, 0.66);
+  --input-border: rgba(153, 176, 196, 0.34);
+  --input-surface: rgba(6, 12, 18, 0.72);
+  --input-hover-border: color-mix(in srgb, #58c5bd 52%, rgba(153, 176, 196, 0.2));
+  --input-hover-surface: rgba(6, 12, 18, 0.72);
+  --invalid-border: #ff7f87;
+  --invalid-halo: rgba(255, 127, 135, 0.12);
+  --button-ink: #72d8cf;
+  --button-border: color-mix(in srgb, #58c5bd 48%, rgba(153, 176, 196, 0.2));
+  --button-surface: color-mix(in srgb, #58c5bd 13%, rgba(29, 43, 57, 0.66));
+  --button-hover-surface: color-mix(in srgb, #58c5bd 22%, rgba(29, 43, 57, 0.66));
+  --ghost-surface: rgba(29, 43, 57, 0.66);
+  --ghost-hover-surface: color-mix(in srgb, #58c5bd 10%, rgba(29, 43, 57, 0.66));
+  --focus-halo: rgba(10, 17, 25, 0.96);
+  --error-ink: #ff7f87;
+  --row-hover-surface: color-mix(in srgb, #58c5bd 8%, transparent);
+  --toggle-off: rgba(6, 12, 18, 0.72);
+  --toggle-inset: rgba(153, 176, 196, 0.34);
+  --toggle-knob: #b4c1cd;
+  --toggle-knob-checked: #72d8cf;
   --toggle-shadow: rgba(0, 0, 0, 0.36);
-  --toggle-on: #3b8bc5;
-  --valid-ink: #83d7b2;
-  --valid-surface: rgba(27, 127, 90, 0.23);
-  --invalid-ink: #ffa0aa;
-  --invalid-surface: rgba(196, 69, 77, 0.24);
+  --toggle-on: color-mix(in srgb, #58c5bd 32%, rgba(6, 12, 18, 0.72));
+  --valid-ink: #58cf91;
+  --valid-surface: color-mix(in srgb, #58cf91 13%, transparent);
+  --invalid-ink: #ff7f87;
+  --invalid-surface: color-mix(in srgb, #ff7f87 14%, transparent);
   --font-sans: "Avenir Next", "Trebuchet MS", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", "Consolas", monospace;
 }
 
 :root[data-theme="light"] {
   color-scheme: light;
-  --page-ink: #17293b;
-  --muted-ink: #64768a;
-  --rail-surface: rgba(250, 252, 253, 0.88);
-  --rail-border: rgba(48, 77, 106, 0.16);
-  --section-border: rgba(48, 77, 106, 0.1);
-  --plot-surface: #fffdfa;
-  --frame-stroke: rgba(38, 77, 117, 0.2);
-  --grid-stroke: rgba(85, 125, 167, 0.15);
-  --axis-stroke: rgba(30, 57, 83, 0.55);
-  --axis-label: rgba(37, 67, 96, 0.82);
+  --page-ink: #202c36;
+  --muted-ink: #687984;
+  --rail-surface: rgba(255, 255, 252, 0.86);
+  --rail-border: rgba(59, 79, 91, 0.17);
+  --section-border: rgba(59, 79, 91, 0.17);
+  --plot-surface: #fbfaf6;
+  --frame-stroke: rgba(59, 79, 91, 0.17);
+  --grid-minor-stroke: rgba(66, 88, 103, 0.12);
+  --grid-stroke: rgba(25, 127, 121, 0.2);
+  --axis-stroke: rgba(39, 57, 69, 0.62);
+  --axis-label: rgba(39, 57, 69, 0.62);
   --selected-vector: #111827;
-  --focus: #155f99;
-  --scrollbar-thumb: rgba(65, 93, 121, 0.26);
-  --panel-shadow-strong: rgba(28, 48, 70, 0.13);
-  --panel-shadow-soft: rgba(28, 48, 70, 0.06);
-  --prompt-border: rgba(48, 77, 106, 0.13);
-  --prompt-surface: rgba(252, 253, 253, 0.83);
-  --soft-surface: rgba(255, 255, 255, 0.45);
-  --input-border: rgba(63, 94, 124, 0.19);
-  --input-surface: rgba(255, 255, 255, 0.84);
-  --input-hover-border: rgba(42, 91, 139, 0.35);
-  --input-hover-surface: rgba(255, 255, 255, 0.96);
-  --invalid-border: rgba(196, 69, 77, 0.64);
-  --invalid-halo: rgba(196, 69, 77, 0.1);
-  --button-ink: #ffffff;
-  --button-surface: #245f91;
-  --button-hover-surface: #194f7e;
-  --ghost-surface: rgba(57, 91, 124, 0.09);
-  --ghost-hover-surface: rgba(57, 91, 124, 0.15);
-  --focus-halo: rgba(255, 255, 255, 0.94);
-  --error-ink: #a83f49;
-  --row-hover-surface: rgba(57, 91, 124, 0.05);
-  --toggle-off: rgba(89, 111, 133, 0.24);
-  --toggle-inset: rgba(60, 81, 104, 0.08);
-  --toggle-knob: #ffffff;
+  --focus: #197f79;
+  --scrollbar-thumb: rgba(52, 74, 88, 0.3);
+  --panel-shadow-strong: rgba(40, 51, 57, 0.14);
+  --panel-shadow-soft: rgba(34, 47, 55, 0.1);
+  --prompt-border: rgba(59, 79, 91, 0.17);
+  --prompt-surface: rgba(255, 255, 252, 0.85);
+  --soft-surface: rgba(238, 242, 241, 0.78);
+  --input-border: rgba(52, 74, 88, 0.3);
+  --input-surface: rgba(247, 249, 248, 0.96);
+  --input-hover-border: color-mix(in srgb, #197f79 52%, rgba(59, 79, 91, 0.17));
+  --input-hover-surface: rgba(247, 249, 248, 0.96);
+  --invalid-border: #c94650;
+  --invalid-halo: rgba(201, 70, 80, 0.12);
+  --button-ink: #126b66;
+  --button-border: color-mix(in srgb, #197f79 48%, rgba(59, 79, 91, 0.17));
+  --button-surface: color-mix(in srgb, #197f79 13%, rgba(238, 242, 241, 0.78));
+  --button-hover-surface: color-mix(in srgb, #197f79 22%, rgba(238, 242, 241, 0.78));
+  --ghost-surface: rgba(238, 242, 241, 0.78);
+  --ghost-hover-surface: color-mix(in srgb, #197f79 10%, rgba(238, 242, 241, 0.78));
+  --focus-halo: rgba(251, 250, 246, 0.94);
+  --error-ink: #c94650;
+  --row-hover-surface: color-mix(in srgb, #197f79 7%, transparent);
+  --toggle-off: rgba(247, 249, 248, 0.96);
+  --toggle-inset: rgba(52, 74, 88, 0.3);
+  --toggle-knob: #4d606d;
+  --toggle-knob-checked: #126b66;
   --toggle-shadow: rgba(39, 58, 78, 0.22);
-  --toggle-on: #2c70a8;
-  --valid-ink: #176b4b;
-  --valid-surface: rgba(27, 127, 90, 0.1);
-  --invalid-ink: #a83f49;
-  --invalid-surface: rgba(196, 69, 77, 0.11);
+  --toggle-on: color-mix(in srgb, #197f79 32%, rgba(247, 249, 248, 0.96));
+  --valid-ink: #18784a;
+  --valid-surface: color-mix(in srgb, #18784a 13%, transparent);
+  --invalid-ink: #c94650;
+  --invalid-surface: color-mix(in srgb, #c94650 14%, transparent);
 }
 
 * {
@@ -356,7 +362,7 @@ input[aria-invalid="true"] {
 button {
   min-height: 2.15rem;
   padding: 0.46rem 0.74rem;
-  border: 0;
+  border: 1px solid var(--button-border);
   border-radius: 999px;
   color: var(--button-ink);
   background: var(--button-surface);
@@ -383,6 +389,7 @@ button:disabled {
 }
 
 .ghost-button {
+  border-color: var(--rail-border);
   color: var(--muted-ink);
   background: var(--ghost-surface);
 }
@@ -511,6 +518,7 @@ button:focus-visible {
 
 .toggle-input:checked + .toggle-pill::after {
   transform: translateX(16px);
+  background: var(--toggle-knob-checked);
 }
 
 .toggle-input:disabled + .toggle-pill {

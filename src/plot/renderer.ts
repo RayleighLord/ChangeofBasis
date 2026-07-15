@@ -23,6 +23,7 @@ import { snapPlotPoint, type PlotSnapResult } from "./snap";
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ZERO_LENGTH_TOLERANCE = 1e-8;
 const DEFAULT_MAX_INTEGER_GRID_LINES = 161;
+const DEFAULT_MAX_HALF_UNIT_GRID_LINES = 321;
 const ZERO_PLOT_PADDING: PlotLayout["padding"] = {
   top: 0,
   right: 0,
@@ -191,8 +192,8 @@ export class ChangeOfBasisPlotRenderer {
     this.updateClip(coordinates);
     const cssScale = this.viewBoxCssScale();
     this.lastRenderedCssScale = cssScale;
-    const xTicks = computeIntegerGridTicks(visibleBounds.xMin, visibleBounds.xMax);
-    const yTicks = computeIntegerGridTicks(visibleBounds.yMin, visibleBounds.yMax);
+    const xTicks = computeHalfUnitGridTicks(visibleBounds.xMin, visibleBounds.xMax);
+    const yTicks = computeHalfUnitGridTicks(visibleBounds.yMin, visibleBounds.yMax);
 
     this.renderGrid(coordinates, visibleBounds, xTicks, yTicks);
     this.renderAxes(coordinates, visibleBounds);
@@ -271,29 +272,46 @@ export class ChangeOfBasisPlotRenderer {
     xTicks: readonly number[],
     yTicks: readonly number[]
   ): void {
-    const gridCommands: string[] = [];
+    const minorCommands: string[] = [];
+    const majorCommands: string[] = [];
 
     xTicks.forEach((tick) => {
+      if (tick === 0) {
+        return;
+      }
       const point = coordinates.modelToSvg({ x: tick, y: bounds.yMin });
-      gridCommands.push(
+      const commands = Number.isInteger(tick) ? majorCommands : minorCommands;
+      commands.push(
         `M ${formatCoordinate(point.x)} ${formatCoordinate(coordinates.innerTop)} ` +
           `L ${formatCoordinate(point.x)} ${formatCoordinate(coordinates.innerTop + coordinates.innerHeight)}`
       );
     });
 
     yTicks.forEach((tick) => {
+      if (tick === 0) {
+        return;
+      }
       const point = coordinates.modelToSvg({ x: bounds.xMin, y: tick });
-      gridCommands.push(
+      const commands = Number.isInteger(tick) ? majorCommands : minorCommands;
+      commands.push(
         `M ${formatCoordinate(coordinates.innerLeft)} ${formatCoordinate(point.y)} ` +
           `L ${formatCoordinate(coordinates.innerLeft + coordinates.innerWidth)} ${formatCoordinate(point.y)}`
       );
     });
 
-    const grid = createSvgElement("path", {
-      d: gridCommands.join(" "),
+    const minorGrid = createSvgElement("path", {
+      d: minorCommands.join(" "),
+      fill: "none",
+      stroke: "var(--grid-minor-stroke, rgba(128, 153, 175, 0.13))",
+      "stroke-width": 0.7,
+      "data-grid-level": "minor"
+    });
+    const majorGrid = createSvgElement("path", {
+      d: majorCommands.join(" "),
       fill: "none",
       stroke: "var(--grid-stroke, #d9e1e8)",
-      "stroke-width": 1
+      "stroke-width": 1.15,
+      "data-grid-level": "major"
     });
     const frame = createSvgElement("rect", {
       x: coordinates.innerLeft,
@@ -306,7 +324,7 @@ export class ChangeOfBasisPlotRenderer {
       "data-plot-frame": "true"
     });
 
-    this.gridLayer.replaceChildren(grid, frame);
+    this.gridLayer.replaceChildren(minorGrid, majorGrid, frame);
     this.tickLayer.replaceChildren();
   }
 
@@ -984,6 +1002,56 @@ export function computeIntegerGridTicks(
     ticks.push(Object.is(tick, -0) ? 0 : tick);
   }
 
+  return ticks;
+}
+
+/**
+ * Returns the half-unit grid used by LinearMappings: integers are major lines
+ * and the intervening half-integers are minor lines. Very large ranges fall
+ * back to the bounded integer grid instead of creating an unbounded SVG path.
+ */
+export function computeHalfUnitGridTicks(
+  min: number,
+  max: number,
+  maxTicks = DEFAULT_MAX_HALF_UNIT_GRID_LINES
+): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
+    return [];
+  }
+
+  const requestedLimit = Number.isFinite(maxTicks)
+    ? Math.floor(maxTicks)
+    : DEFAULT_MAX_HALF_UNIT_GRID_LINES;
+  const limit = Math.max(1, Math.min(4096, requestedLimit));
+  const scaledMin = min * 2;
+  const scaledMax = max * 2;
+
+  if (!Number.isFinite(scaledMin) || !Number.isFinite(scaledMax)) {
+    return computeIntegerGridTicks(min, max, limit);
+  }
+
+  const firstHalfUnit = Math.ceil(scaledMin);
+  const lastHalfUnit = Math.floor(scaledMax);
+  if (firstHalfUnit > lastHalfUnit) {
+    return [];
+  }
+
+  const candidateCount = lastHalfUnit - firstHalfUnit + 1;
+  if (
+    !Number.isSafeInteger(firstHalfUnit) ||
+    !Number.isSafeInteger(lastHalfUnit) ||
+    !Number.isSafeInteger(candidateCount) ||
+    candidateCount > limit
+  ) {
+    return computeIntegerGridTicks(min, max, limit);
+  }
+
+  const ticks: number[] = [];
+  for (let index = 0; index < candidateCount; index += 1) {
+    const halfUnit = firstHalfUnit + index;
+    const tick = halfUnit / 2;
+    ticks.push(Object.is(tick, -0) ? 0 : tick);
+  }
   return ticks;
 }
 
