@@ -13,7 +13,7 @@ import type {
 import { AppController } from "./ui/controller";
 
 const BASIS_STATIC_MATH: Record<string, string> = {
-  "basis-form-title": "B'=(\\vec e'_1,\\vec e'_2)",
+  "basis-form-title": "B'=\\{\\vec e'_1,\\vec e'_2\\}",
   "basis-first-label": "\\vec e'_1",
   "basis-second-label": "\\vec e'_2",
   "vector-form-title": "\\vec v=(v_x,v_y)",
