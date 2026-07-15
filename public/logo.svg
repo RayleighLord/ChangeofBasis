@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Change of basis logo">
+  <rect width="64" height="64" rx="16" fill="#fffdfa"/>
+  <path d="M10 54V12M10 54H52" stroke="#17304a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M10 54L43 21" stroke="#2f6fdb" stroke-width="5" stroke-linecap="round"/>
+  <path d="M43 21l-12 3 9 9z" fill="#2f6fdb"/>
+  <path d="M10 54L24 15" stroke="#7b4db3" stroke-width="5" stroke-linecap="round"/>
+  <path d="M24 15l-8 10 12 4z" fill="#7b4db3"/>
+</svg>
