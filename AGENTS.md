@@ -24,11 +24,16 @@ subpath.
 - Keep exact arithmetic and linear algebra in `src/math/`.
 - Keep coordinate transforms, snapping, ticks, and retained SVG rendering in `src/plot/`.
 - Preserve Vite's relative `base: "./"` and the single test/build/deploy workflow.
+- Keep `README.md` intentionally minimal: the live-page link, a brief mathematical description,
+  and the linked animated showcase in `docs/`. Keep development details out of the public README.
+- Use `https://rayleighlord.github.io/ChangeofBasis/` as the canonical public URL unless the
+  repository owner or name changes.
 
 ## UX and verification
 
 - Do not communicate basis identity through color alone; keep visible mathematical labels.
 - Preserve the independent component toggles and keyboard coordinate-entry workflow.
-- Keep the plot square on narrow layouts and the sidebar independently scrollable on desktop.
+- Keep the grid full-viewport with equal horizontal and vertical unit scale at every aspect ratio.
+- Keep the floating left control rail minimal: basis, vector, component toggles, and matrices only.
 - Run unit tests, typecheck, production build, browser smoke tests, and visual browser inspection for
   interaction or layout changes.

@@ -192,7 +192,7 @@ describe("selected-vector coordinates", () => {
 describe("matrix formatting", () => {
   it("renders reduced entries in a KaTeX bmatrix", () => {
     expect(formatMatrixTex(analyzeBasis(defaultBasis).toPrime!)).toBe(
-      "\\begin{bmatrix}\\frac{1}{2} & \\frac{1}{2} \\\\ -\\frac{1}{2} & \\frac{1}{2}\\end{bmatrix}",
+      "\\begin{bmatrix}\\frac{1}{2} & \\frac{1}{2} \\\\[0.4em] -\\frac{1}{2} & \\frac{1}{2}\\end{bmatrix}",
     );
   });
 });

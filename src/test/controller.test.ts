@@ -34,7 +34,7 @@ function singularBasis(): Basis2D {
 }
 
 describe("AppController defaults and subscriptions", () => {
-  it("starts with the requested B' basis, square bounds, no vector, and both decompositions off", () => {
+  it("starts with the requested B' basis, square bounds, no vector, and both decompositions on", () => {
     const state = createDefaultState();
 
     expect(state).toEqual({
@@ -48,10 +48,10 @@ describe("AppController defaults and subscriptions", () => {
           y: normalizeRational(1n)
         }
       },
-      bounds: { xMin: -4, xMax: 4, yMin: -4, yMax: 4 },
+      bounds: { xMin: -8, xMax: 8, yMin: -8, yMax: 8 },
       selectedVector: null,
-      showStandardComponents: false,
-      showPrimeComponents: false,
+      showStandardComponents: true,
+      showPrimeComponents: true,
       boundsError: null
     });
 
@@ -175,6 +175,16 @@ describe("AppController vector coordinates and decomposition state", () => {
     expect(viewModel.coordinates?.standard).toEqual(exactVector(3n, 1n));
     expect(viewModel.coordinates?.prime).toBeNull();
     expect(viewModel.notices.some((notice) => notice.tone === "warning")).toBe(true);
+  });
+
+  it("keeps the standard decomposition on when a singular candidate is applied", () => {
+    const controller = new AppController();
+    controller.setShowStandardComponents(false);
+
+    controller.setBasis(singularBasis());
+
+    expect(controller.getViewModel().state.showStandardComponents).toBe(true);
+    expect(controller.getViewModel().state.showPrimeComponents).toBe(false);
   });
 
   it("does not automatically re-enable B' decomposition after recovering from singular input", () => {

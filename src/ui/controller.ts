@@ -32,10 +32,10 @@ export interface AppControllerUpdate {
 type Listener = (viewModel: ViewModel) => void;
 
 const DEFAULT_BOUNDS: PlotBounds = {
-  xMin: -4,
-  xMax: 4,
-  yMin: -4,
-  yMax: 4
+  xMin: -8,
+  xMax: 8,
+  yMin: -8,
+  yMax: 8
 };
 const RENDER_SCALE_PROBE = 1024;
 
@@ -59,7 +59,11 @@ export class AppController {
     this.basisAnalysis = this.dependencies.analyzeBasis(initialState.basis);
     this.state = this.basisAnalysis.isBasis
       ? initialState
-      : { ...initialState, showPrimeComponents: false };
+      : {
+          ...initialState,
+          showStandardComponents: true,
+          showPrimeComponents: false
+        };
     this.viewModel = this.createViewModel();
   }
 
@@ -139,8 +143,11 @@ export class AppController {
       selectedVector = update.selectedVector;
     }
 
-    const showStandardComponents =
+    const requestedStandardComponents =
       update.showStandardComponents ?? previousState.showStandardComponents;
+    const showStandardComponents = basisAnalysis.isBasis
+      ? requestedStandardComponents
+      : true;
     const requestedPrimeComponents =
       update.showPrimeComponents ?? previousState.showPrimeComponents;
     const showPrimeComponents = basisAnalysis.isBasis
@@ -231,8 +238,8 @@ export function createDefaultState(): AppState {
     },
     bounds: { ...DEFAULT_BOUNDS },
     selectedVector: null,
-    showStandardComponents: false,
-    showPrimeComponents: false,
+    showStandardComponents: true,
+    showPrimeComponents: true,
     boundsError: null
   };
 }

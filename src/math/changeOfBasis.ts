@@ -211,5 +211,5 @@ export function coordinatesForSelectedVector(
 
 /** Formats a 2x2 rational matrix as a KaTeX `bmatrix` expression. */
 export function formatMatrixTex(matrix: Matrix2<Rational>): string {
-  return `\\begin{bmatrix}${formatRationalTex(matrix[0][0])} & ${formatRationalTex(matrix[0][1])} \\\\ ${formatRationalTex(matrix[1][0])} & ${formatRationalTex(matrix[1][1])}\\end{bmatrix}`;
+  return `\\begin{bmatrix}${formatRationalTex(matrix[0][0])} & ${formatRationalTex(matrix[0][1])} \\\\[0.4em] ${formatRationalTex(matrix[1][0])} & ${formatRationalTex(matrix[1][1])}\\end{bmatrix}`;
 }

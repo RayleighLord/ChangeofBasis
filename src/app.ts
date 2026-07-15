@@ -1,43 +1,31 @@
 import katex from "katex";
 
-import {
-  formatMatrixTex,
-} from "./math/changeOfBasis";
-import {
-  formatRational,
-  formatRationalTex,
-  parseRational
-} from "./math/rational";
+import { formatMatrixTex } from "./math/changeOfBasis";
+import { formatRational, formatRationalTex, parseRational } from "./math/rational";
 import { ChangeOfBasisPlotRenderer } from "./plot/renderer";
 import type {
   Basis2D,
-  PlotBounds,
   Rational,
   ScalarValue,
   SelectedVector,
   ViewModel
 } from "./types";
-import { AppController, validateBounds } from "./ui/controller";
+import { AppController } from "./ui/controller";
 
 const BASIS_STATIC_MATH: Record<string, string> = {
-  "hero-bases": "B=(e_1,e_2),\\qquad B'=(e'_1,e'_2)",
-  "basis-form-title": "B'=(e'_1,e'_2)",
-  "basis-first-label": "e'_1",
-  "basis-second-label": "e'_2",
-  "vector-form-title": "v=(v_x,v_y)",
+  "basis-form-title": "B'=(\\vec e'_1,\\vec e'_2)",
+  "basis-first-label": "\\vec e'_1",
+  "basis-second-label": "\\vec e'_2",
+  "vector-form-title": "\\vec v=(v_x,v_y)",
   "standard-toggle-math": "B",
   "prime-toggle-math": "B'",
-  "standard-coordinate-label": "B",
-  "prime-coordinate-label": "B'",
   "to-standard-heading": "B'\\to B",
-  "to-prime-heading": "B\\to B'",
-  "plot-vector-symbol": "v",
-  "legend-e1": "e_1",
-  "legend-e2": "e_2",
-  "legend-e1-prime": "e'_1",
-  "legend-e2-prime": "e'_2",
-  "legend-v": "v"
+  "to-prime-heading": "B\\to B'"
 };
+
+type Theme = "dark" | "light";
+
+const THEME_STORAGE_KEY = "change-of-basis-theme";
 
 interface FieldErrorTarget {
   input: HTMLInputElement;
@@ -47,10 +35,15 @@ interface FieldErrorTarget {
 export function startApp(): void {
   renderStaticMath();
 
+  const themeToggle = getElement<HTMLButtonElement>("theme-toggle");
+  const themeToggleLabel = getElement<HTMLElement>("theme-toggle-label");
+  const themeToggleIcon = getElement<HTMLElement>("theme-toggle-icon");
+  let activeTheme = readStoredTheme();
+  applyTheme(activeTheme, themeToggle, themeToggleLabel, themeToggleIcon);
+
   const plot = getElement<SVGSVGElement>("basis-plot");
   const basisForm = getElement<HTMLFormElement>("basis-form");
   const vectorForm = getElement<HTMLFormElement>("vector-form");
-  const boundsForm = getElement<HTMLFormElement>("bounds-form");
   const basisInputs = {
     firstX: fieldTarget("basis-first-x"),
     firstY: fieldTarget("basis-first-y"),
@@ -61,27 +54,18 @@ export function startApp(): void {
     x: fieldTarget("vector-x"),
     y: fieldTarget("vector-y")
   };
-  const boundsInputs = {
-    xMin: getElement<HTMLInputElement>("x-min-input"),
-    xMax: getElement<HTMLInputElement>("x-max-input"),
-    yMin: getElement<HTMLInputElement>("y-min-input"),
-    yMax: getElement<HTMLInputElement>("y-max-input")
-  };
   const standardToggle = getElement<HTMLInputElement>("standard-components-toggle");
   const primeToggle = getElement<HTMLInputElement>("prime-components-toggle");
   const clearVectorButton = getElement<HTMLButtonElement>("clear-vector-button");
-  const resetButton = getElement<HTMLButtonElement>("reset-button");
   const basisFormError = getElement<HTMLElement>("basis-form-error");
   const vectorFormError = getElement<HTMLElement>("vector-form-error");
-  const boundsFormError = getElement<HTMLElement>("bounds-form-error");
+  const plotPrompt = getElement<HTMLElement>("plot-prompt");
   const interactionStatus = getElement<HTMLElement>("interaction-status");
 
   const controller = new AppController();
   const renderer = new ChangeOfBasisPlotRenderer(plot);
   let basisInputsDirty = false;
   let vectorInputsDirty = false;
-  let boundsInputsDirty = false;
-  let syncedBounds: PlotBounds | null = null;
 
   Object.values(basisInputs).forEach(({ input }) => {
     input.addEventListener("input", () => {
@@ -97,12 +81,12 @@ export function startApp(): void {
       vectorFormError.textContent = "";
     });
   });
-  Object.values(boundsInputs).forEach((input) => {
-    input.addEventListener("input", () => {
-      boundsInputsDirty = true;
-      input.removeAttribute("aria-invalid");
-      boundsFormError.textContent = "";
-    });
+
+  themeToggle.addEventListener("click", () => {
+    activeTheme = activeTheme === "dark" ? "light" : "dark";
+    applyTheme(activeTheme, themeToggle, themeToggleLabel, themeToggleIcon);
+    storeTheme(activeTheme);
+    announce(interactionStatus, `${activeTheme === "dark" ? "Dark" : "Light"} mode enabled.`);
   });
 
   controller.subscribe((viewModel) => {
@@ -112,25 +96,21 @@ export function startApp(): void {
     if (!vectorInputsDirty) {
       syncVectorInputs(viewModel.state.selectedVector, vectorInputs);
     }
-    if (!boundsInputsDirty && syncedBounds !== viewModel.state.bounds) {
-      syncBoundsInputs(viewModel.state.bounds, boundsInputs);
-      syncedBounds = viewModel.state.bounds;
-    }
 
     standardToggle.checked = viewModel.state.showStandardComponents;
     primeToggle.checked = viewModel.state.showPrimeComponents;
     primeToggle.disabled = !viewModel.basisAnalysis.isBasis;
-    boundsFormError.textContent = viewModel.state.boundsError ?? "";
+    plotPrompt.hidden = !shouldShowPlotPrompt(viewModel);
     renderResults(viewModel);
     renderer.render(viewModel);
   });
 
   basisForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const firstX = parseField(basisInputs.firstX);
-    const firstY = parseField(basisInputs.firstY);
-    const secondX = parseField(basisInputs.secondX);
-    const secondY = parseField(basisInputs.secondY);
+    const firstX = parseBasisIntegerField(basisInputs.firstX);
+    const firstY = parseBasisIntegerField(basisInputs.firstY);
+    const secondX = parseBasisIntegerField(basisInputs.secondX);
+    const secondY = parseBasisIntegerField(basisInputs.secondY);
 
     if (!firstX || !firstY || !secondX || !secondY) {
       basisFormError.textContent = "The graph still uses the last applied basis.";
@@ -154,8 +134,8 @@ export function startApp(): void {
 
   vectorForm.addEventListener("submit", (event) => {
     event.preventDefault();
-    const x = parseField(vectorInputs.x);
-    const y = parseField(vectorInputs.y);
+    const x = parseVectorIntegerField(vectorInputs.x);
+    const y = parseVectorIntegerField(vectorInputs.y);
 
     if (!x || !y) {
       vectorFormError.textContent = "The selected vector was not changed.";
@@ -168,31 +148,7 @@ export function startApp(): void {
       x: { kind: "exact", value: x, source: "input" },
       y: { kind: "exact", value: y, source: "input" }
     });
-    announce(interactionStatus, "Vector set. Coordinate results updated.");
-  });
-
-  boundsForm.addEventListener("submit", (event) => {
-    event.preventDefault();
-    const parsedBounds = parseBoundsInputs(boundsInputs);
-    if (!parsedBounds) {
-      boundsFormError.textContent = "Enter a finite number in each plot-limit field.";
-      return;
-    }
-
-    const nextBounds: PlotBounds = parsedBounds;
-    const error = validateBounds(nextBounds);
-
-    if (error) {
-      markInvalidBounds(boundsInputs, nextBounds);
-      boundsFormError.textContent = error;
-      return;
-    }
-
-    Object.values(boundsInputs).forEach((input) => input.removeAttribute("aria-invalid"));
-    boundsInputsDirty = false;
-    boundsFormError.textContent = "";
-    controller.applyBounds(nextBounds);
-    announce(interactionStatus, "Plot view updated.");
+    announce(interactionStatus, "Vector set.");
   });
 
   standardToggle.addEventListener("change", () => {
@@ -219,20 +175,6 @@ export function startApp(): void {
     announce(interactionStatus, "Vector cleared.");
   });
 
-  resetButton.addEventListener("click", () => {
-    basisInputsDirty = false;
-    vectorInputsDirty = false;
-    boundsInputsDirty = false;
-    syncedBounds = null;
-    clearAllFieldErrors([...Object.values(basisInputs), ...Object.values(vectorInputs)]);
-    Object.values(boundsInputs).forEach((input) => input.removeAttribute("aria-invalid"));
-    basisFormError.textContent = "";
-    vectorFormError.textContent = "";
-    boundsFormError.textContent = "";
-    controller.reset();
-    announce(interactionStatus, "Example reset to the default basis and view.");
-  });
-
   plot.addEventListener("click", (event) => {
     const viewModel = controller.getViewModel();
     const point = renderer.clientPointToModel(
@@ -249,13 +191,52 @@ export function startApp(): void {
     clearAllFieldErrors(Object.values(vectorInputs));
     vectorFormError.textContent = "";
     controller.setVector(snapped.vector);
-    announce(interactionStatus, "Vector selected from the plot. Coordinate results updated.");
+    announce(interactionStatus, "Vector selected from the plot.");
+  });
+
+  plot.addEventListener("contextmenu", (event) => {
+    event.preventDefault();
+    vectorInputsDirty = false;
+    clearAllFieldErrors(Object.values(vectorInputs));
+    vectorFormError.textContent = "";
+    controller.clearVector();
+    announce(interactionStatus, "Vector removed.");
   });
 
   const resizeObserver = new ResizeObserver(() => renderer.resize());
   if (plot.parentElement) {
     resizeObserver.observe(plot.parentElement);
   }
+}
+
+function readStoredTheme(): Theme {
+  try {
+    return window.localStorage.getItem(THEME_STORAGE_KEY) === "light" ? "light" : "dark";
+  } catch {
+    return "dark";
+  }
+}
+
+function storeTheme(theme: Theme): void {
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Theme switching still works when storage is unavailable.
+  }
+}
+
+function applyTheme(
+  theme: Theme,
+  toggle: HTMLButtonElement,
+  label: HTMLElement,
+  icon: HTMLElement
+): void {
+  const destination = theme === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = theme;
+  toggle.setAttribute("aria-pressed", `${theme === "dark"}`);
+  toggle.setAttribute("aria-label", `Switch to ${destination} mode`);
+  label.textContent = `${destination === "dark" ? "Dark" : "Light"} mode`;
+  icon.textContent = destination === "dark" ? "☾" : "☀";
 }
 
 function renderStaticMath(): void {
@@ -265,31 +246,12 @@ function renderStaticMath(): void {
 }
 
 function renderResults(viewModel: ViewModel): void {
-  const { basisAnalysis, coordinates } = viewModel;
+  renderVectorCoordinates(viewModel);
+
+  const { basisAnalysis } = viewModel;
   const status = getElement<HTMLElement>("basis-status");
   status.textContent = basisAnalysis.isBasis ? "Valid basis" : "Not a basis";
   status.className = `status-chip ${basisAnalysis.isBasis ? "is-valid" : "is-invalid"}`;
-
-  renderMath(
-    getElement<HTMLElement>("determinant-output"),
-    `\\det([e'_1\\ e'_2])=${formatRationalTex(basisAnalysis.determinant)}`
-  );
-
-  if (coordinates) {
-    renderMath(
-      getElement<HTMLElement>("standard-coordinate-output"),
-      formatCoordinateTex("B", coordinates.standard)
-    );
-    renderMath(
-      getElement<HTMLElement>("prime-coordinate-output"),
-      coordinates.prime
-        ? formatCoordinateTex("B'", coordinates.prime)
-        : "[v]_{B'}\\text{ is unavailable}"
-    );
-  } else {
-    renderMath(getElement<HTMLElement>("standard-coordinate-output"), "\\text{Select }v");
-    renderMath(getElement<HTMLElement>("prime-coordinate-output"), "\\text{Select }v");
-  }
 
   if (basisAnalysis.isBasis) {
     renderMath(
@@ -299,17 +261,17 @@ function renderResults(viewModel: ViewModel): void {
     );
     renderMath(
       getElement<HTMLElement>("mapping-to-standard"),
-      "[v]_B=P_{B\\leftarrow B'}[v]_{B'}"
+      "[\\vec v]_B=P_{B\\leftarrow B'}[\\vec v]_{B'}"
     );
   } else {
     renderMath(
       getElement<HTMLElement>("matrix-to-standard"),
-      `A=[e'_1\\ e'_2]=${formatMatrixTex(basisAnalysis.toStandard)}`,
+      `A=[\\vec e'_1\\ \\vec e'_2]=${formatMatrixTex(basisAnalysis.toStandard)}`,
       true
     );
     renderMath(
       getElement<HTMLElement>("mapping-to-standard"),
-      "\\text{Candidate column matrix; not a change-of-basis matrix.}"
+      "\\text{Candidate columns only; }B'\\text{ is not a basis.}"
     );
   }
 
@@ -321,54 +283,113 @@ function renderResults(viewModel: ViewModel): void {
     );
     renderMath(
       getElement<HTMLElement>("mapping-to-prime"),
-      "[v]_{B'}=P_{B'\\leftarrow B}[v]_B"
+      "[\\vec v]_{B'}=P_{B'\\leftarrow B}[\\vec v]_B"
     );
   } else {
-    renderMath(getElement<HTMLElement>("matrix-to-prime"), "P_{B'\\leftarrow B}\\text{ does not exist}");
-    renderMath(getElement<HTMLElement>("mapping-to-prime"), "\\det([e'_1\\ e'_2])=0");
+    renderMath(
+      getElement<HTMLElement>("matrix-to-prime"),
+      "P_{B'\\leftarrow B}\\text{ does not exist}",
+      true
+    );
+    renderMath(
+      getElement<HTMLElement>("mapping-to-prime"),
+      "\\text{Unavailable because }B'\\text{ is not a basis.}"
+    );
+  }
+}
+
+function renderVectorCoordinates(viewModel: ViewModel): void {
+  const card = getElement<HTMLElement>("vector-coordinates-card");
+  const coordinates = viewModel.coordinates;
+  card.hidden = coordinates === null;
+  if (!coordinates) {
+    return;
   }
 
-  const noticeList = getElement<HTMLUListElement>("notice-list");
-  noticeList.replaceChildren(
-    ...viewModel.notices.map((notice) => {
-      const item = document.createElement("li");
-      item.className = `notice-item tone-${notice.tone}`;
-      item.textContent = notice.text;
-      return item;
-    })
+  renderMath(
+    getElement<HTMLElement>("vector-coordinate-standard"),
+    `[\\vec v]_B${formatCoordinateColumnTex(coordinates.standard, "standard")}`
+  );
+
+  const primeOutput = getElement<HTMLElement>("vector-coordinate-prime");
+  if (coordinates.prime) {
+    renderMath(
+      primeOutput,
+      `[\\vec v]_{B'}${formatCoordinateColumnTex(coordinates.prime, "prime")}`
+    );
+  } else {
+    renderMath(primeOutput, "[\\vec v]_{B'}\\text{ unavailable}");
+  }
+}
+
+function formatCoordinateColumnTex(
+  vector: SelectedVector,
+  basis: "standard" | "prime"
+): string {
+  const relation = vector.x.kind === "exact" && vector.y.kind === "exact" ? "=" : "\\approx";
+  const colors =
+    basis === "standard"
+      ? ["#1B7F5A", "#C4454D"]
+      : ["#2F6FDB", "#7B4DB3"];
+  const basisTex = basis === "standard" ? "B" : "B'";
+  return (
+    `${relation}\\begin{bmatrix}` +
+    `\\color{${colors[0]}}{${formatCoordinateScalarTex(vector.x)}} \\\\[0.4em] ` +
+    `\\color{${colors[1]}}{${formatCoordinateScalarTex(vector.y)}}` +
+    `\\end{bmatrix}_{${basisTex}}`
   );
 }
 
-function formatCoordinateTex(basis: "B" | "B'", vector: SelectedVector): string {
-  const approximate = vector.x.kind === "approximate" || vector.y.kind === "approximate";
-  const relation = approximate ? "\\approx" : "=";
-  return `[v]_{${basis}}${relation}\\begin{bmatrix}${formatScalarTex(vector.x)}\\\\${formatScalarTex(vector.y)}\\end{bmatrix}`;
-}
-
-function formatScalarTex(value: ScalarValue): string {
-  return value.kind === "exact" ? formatRationalTex(value.value) : formatApproximate(value.value);
-}
-
-function formatApproximate(value: number): string {
-  if (!Number.isFinite(value)) {
-    return "\\text{undefined}";
+function formatCoordinateScalarTex(value: ScalarValue): string {
+  if (value.kind === "exact") {
+    return formatRationalTex(value.value);
   }
-  const magnitude = Math.abs(value);
-  if (magnitude !== 0 && (magnitude >= 10000 || magnitude < 0.0001)) {
-    const [coefficient, exponent] = value.toExponential(3).split("e");
-    return `${Number(coefficient)}\\times 10^{${Number(exponent)}}`;
-  }
-  return `${Number(value.toFixed(4))}`;
+  const normalized = Object.is(value.value, -0) ? 0 : value.value;
+  return `${Number(normalized.toFixed(4))}`;
 }
 
-function parseField(target: FieldErrorTarget): Rational | null {
+/** The plot hint is useful only until an endpoint has been selected. */
+export function shouldShowPlotPrompt(viewModel: ViewModel): boolean {
+  return viewModel.state.selectedVector === null;
+}
+
+/** Parses the signed-integer literals accepted by the B' input fields. */
+export function parseBasisIntegerLiteral(text: string): Rational {
+  const literal = text.trim();
+  if (!/^[+-]?\d+$/.test(literal)) {
+    throw new SyntaxError("Enter an integer, such as -2, 0, or 3.");
+  }
+  return parseRational(literal);
+}
+
+/** Parses the signed-integer literals accepted by the selected-vector fields. */
+export function parseVectorIntegerLiteral(text: string): Rational {
+  const literal = text.trim();
+  if (!/^[+-]?\d+$/.test(literal)) {
+    throw new SyntaxError("Enter an integer, such as -2, 0, or 3.");
+  }
+  return parseRational(literal);
+}
+
+function parseBasisIntegerField(target: FieldErrorTarget): Rational | null {
+  return parseField(target, parseBasisIntegerLiteral);
+}
+
+function parseVectorIntegerField(target: FieldErrorTarget): Rational | null {
+  return parseField(target, parseVectorIntegerLiteral);
+}
+
+function parseField(
+  target: FieldErrorTarget,
+  parser: (text: string) => Rational
+): Rational | null {
   try {
-    const value = parseRational(target.input.value);
+    const value = parser(target.input.value);
     clearFieldError(target);
     return value;
   } catch (error) {
     target.input.setAttribute("aria-invalid", "true");
-    target.error.textContent = error instanceof Error ? error.message : "Enter an exact number.";
+    target.error.textContent = error instanceof Error ? error.message : "Enter a valid number.";
     return null;
   }
 }
@@ -380,53 +401,6 @@ function clearFieldError(target: FieldErrorTarget): void {
 
 function clearAllFieldErrors(targets: FieldErrorTarget[]): void {
   targets.forEach(clearFieldError);
-}
-
-function parseBoundsInputs(
-  inputs: Record<"xMin" | "xMax" | "yMin" | "yMax", HTMLInputElement>
-): PlotBounds | null {
-  const parsed: Partial<PlotBounds> = {};
-  let valid = true;
-
-  (Object.entries(inputs) as [keyof PlotBounds, HTMLInputElement][]).forEach(
-    ([name, input]) => {
-      const value = input.value.trim() === "" ? Number.NaN : input.valueAsNumber;
-      if (!Number.isFinite(value)) {
-        input.setAttribute("aria-invalid", "true");
-        valid = false;
-      } else {
-        input.removeAttribute("aria-invalid");
-        parsed[name] = value;
-      }
-    }
-  );
-
-  return valid ? (parsed as PlotBounds) : null;
-}
-
-function markInvalidBounds(
-  inputs: Record<"xMin" | "xMax" | "yMin" | "yMax", HTMLInputElement>,
-  bounds: PlotBounds
-): void {
-  Object.values(inputs).forEach((input) => input.removeAttribute("aria-invalid"));
-  const xSpan = bounds.xMax - bounds.xMin;
-  const ySpan = bounds.yMax - bounds.yMin;
-  const invalidX =
-    bounds.xMin >= bounds.xMax || !Number.isFinite(xSpan) || !Number.isFinite(1024 / xSpan);
-  const invalidY =
-    bounds.yMin >= bounds.yMax || !Number.isFinite(ySpan) || !Number.isFinite(1024 / ySpan);
-
-  if (invalidX) {
-    inputs.xMin.setAttribute("aria-invalid", "true");
-    inputs.xMax.setAttribute("aria-invalid", "true");
-  }
-  if (invalidY) {
-    inputs.yMin.setAttribute("aria-invalid", "true");
-    inputs.yMax.setAttribute("aria-invalid", "true");
-  }
-  if (!invalidX && !invalidY) {
-    Object.values(inputs).forEach((input) => input.setAttribute("aria-invalid", "true"));
-  }
 }
 
 function announce(region: HTMLElement, message: string): void {
@@ -461,16 +435,6 @@ function syncVectorInputs(
 
 function formatScalarInput(value: ScalarValue): string {
   return value.kind === "exact" ? formatRational(value.value) : `${Number(value.value.toFixed(4))}`;
-}
-
-function syncBoundsInputs(
-  bounds: PlotBounds,
-  inputs: Record<"xMin" | "xMax" | "yMin" | "yMax", HTMLInputElement>
-): void {
-  setInputValue(inputs.xMin, `${bounds.xMin}`);
-  setInputValue(inputs.xMax, `${bounds.xMax}`);
-  setInputValue(inputs.yMin, `${bounds.yMin}`);
-  setInputValue(inputs.yMax, `${bounds.yMax}`);
 }
 
 function setInputValue(input: HTMLInputElement, value: string): void {

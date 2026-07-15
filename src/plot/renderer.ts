@@ -1,7 +1,9 @@
+import katex from "katex";
+
 import {
   selectedVectorToNumeric
 } from "../math/changeOfBasis";
-import { formatRational, multiply, toNumber } from "../math/rational";
+import { formatRational, formatRationalTex, multiply, toNumber } from "../math/rational";
 import type {
   PlotBounds,
   PlotLayout,
@@ -17,17 +19,23 @@ import {
   type SvgPoint
 } from "./coordinates";
 import { snapPlotPoint, type PlotSnapResult } from "./snap";
-import { computeAdaptiveTicks, formatTick } from "./ticks";
 
 const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const ZERO_LENGTH_TOLERANCE = 1e-8;
+const DEFAULT_MAX_INTEGER_GRID_LINES = 161;
+const ZERO_PLOT_PADDING: PlotLayout["padding"] = {
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0
+};
 
 export const PLOT_COLORS = {
-  standardFirst: "#1B7F5A",
-  standardSecond: "#C4454D",
-  primeFirst: "#2F6FDB",
-  primeSecond: "#7B4DB3",
-  selected: "#111827"
+  standardFirst: "var(--standard-first, #1B7F5A)",
+  standardSecond: "var(--standard-second, #C4454D)",
+  primeFirst: "var(--prime-first, #2F6FDB)",
+  primeSecond: "var(--prime-second, #7B4DB3)",
+  selected: "var(--selected-vector, #111827)"
 } as const;
 
 export interface PlotRendererOptions {
@@ -60,9 +68,11 @@ let rendererSequence = 0;
  */
 export class ChangeOfBasisPlotRenderer {
   private readonly svg: SVGSVGElement;
-  private readonly layout: PlotLayout;
+  private layout: PlotLayout;
+  private readonly dynamicLayout: boolean;
   private readonly instanceId: string;
   private readonly description: SVGDescElement;
+  private readonly backgroundRect: SVGRectElement;
   private readonly clipRect: SVGRectElement;
   private readonly gridLayer: SVGGElement;
   private readonly tickLayer: SVGGElement;
@@ -82,7 +92,10 @@ export class ChangeOfBasisPlotRenderer {
 
   constructor(svg: SVGSVGElement, options: PlotRendererOptions = {}) {
     this.svg = svg;
-    this.layout = options.layout ?? DEFAULT_PLOT_LAYOUT;
+    this.dynamicLayout = options.layout === undefined;
+    this.layout = options.layout
+      ? cloneLayout(options.layout)
+      : { ...DEFAULT_PLOT_LAYOUT, padding: { ...ZERO_PLOT_PADDING } };
     this.instanceId = `change-basis-plot-${rendererSequence += 1}`;
 
     const title = createSvgElement("title", { id: `${this.instanceId}-title` });
@@ -117,6 +130,15 @@ export class ChangeOfBasisPlotRenderer {
     this.vectorLayer = createLayer("selected-vector", `${this.instanceId}-clip`);
     this.fallbackLabelLayer = createLayer("vector-labels");
 
+    this.backgroundRect = createSvgElement("rect", {
+      x: 0,
+      y: 0,
+      width: this.layout.width,
+      height: this.layout.height,
+      fill: "var(--plot-surface, #fffdf8)",
+      "data-plot-background": "true"
+    });
+
     this.svg.setAttribute("viewBox", `0 0 ${this.layout.width} ${this.layout.height}`);
     this.svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
     this.svg.setAttribute("role", "img");
@@ -128,14 +150,7 @@ export class ChangeOfBasisPlotRenderer {
       title,
       this.description,
       definitions,
-      createSvgElement("rect", {
-        x: 0,
-        y: 0,
-        width: this.layout.width,
-        height: this.layout.height,
-        fill: "var(--plot-surface, #fffdf8)",
-        "data-plot-background": "true"
-      }),
+      this.backgroundRect,
       this.gridLayer,
       this.tickLayer,
       this.axisLayer,
@@ -147,6 +162,8 @@ export class ChangeOfBasisPlotRenderer {
       this.vectorLayer,
       this.fallbackLabelLayer
     );
+
+    this.syncDynamicLayout();
 
     const annotationHost = options.annotationHost === undefined
       ? this.svg.parentElement
@@ -163,28 +180,22 @@ export class ChangeOfBasisPlotRenderer {
 
   render(viewModel: ViewModel): void {
     this.lastViewModel = viewModel;
+    this.syncDynamicLayout();
     this.annotations.length = 0;
     this.occupiedAnnotationPoints.length = 0;
     this.annotationLayer?.replaceChildren();
     this.fallbackLabelLayer.replaceChildren();
 
-    const coordinates = this.getCoordinateSystem(viewModel.state.bounds);
+    const visibleBounds = this.getVisibleBounds(viewModel.state.bounds);
+    const coordinates = createCoordinateSystem(this.layout, visibleBounds);
     this.updateClip(coordinates);
     const cssScale = this.viewBoxCssScale();
     this.lastRenderedCssScale = cssScale;
-    const xTicks = computeAdaptiveTicks(
-      viewModel.state.bounds.xMin,
-      viewModel.state.bounds.xMax,
-      coordinates.innerWidth * cssScale
-    );
-    const yTicks = computeAdaptiveTicks(
-      viewModel.state.bounds.yMin,
-      viewModel.state.bounds.yMax,
-      coordinates.innerHeight * cssScale
-    );
+    const xTicks = computeIntegerGridTicks(visibleBounds.xMin, visibleBounds.xMax);
+    const yTicks = computeIntegerGridTicks(visibleBounds.yMin, visibleBounds.yMax);
 
-    this.renderGrid(coordinates, viewModel.state.bounds, xTicks, yTicks, cssScale);
-    this.renderAxes(coordinates, viewModel.state.bounds, cssScale);
+    this.renderGrid(coordinates, visibleBounds, xTicks, yTicks);
+    this.renderAxes(coordinates, visibleBounds);
     this.renderBases(coordinates, viewModel);
     this.renderComponents(coordinates, viewModel);
     this.renderSelectedVector(coordinates, viewModel);
@@ -194,10 +205,12 @@ export class ChangeOfBasisPlotRenderer {
 
   /** Repositions the HTML label overlay after any responsive stage resize. */
   resize(): void {
+    const layoutChanged = this.syncDynamicLayout();
     const cssScale = this.viewBoxCssScale();
     if (
       this.lastViewModel &&
-      (!Number.isFinite(this.lastRenderedCssScale) ||
+      (layoutChanged ||
+        !Number.isFinite(this.lastRenderedCssScale) ||
         Math.abs(cssScale - this.lastRenderedCssScale) > 1e-4)
     ) {
       this.render(this.lastViewModel);
@@ -212,7 +225,8 @@ export class ChangeOfBasisPlotRenderer {
   }
 
   getCoordinateSystem(bounds: PlotBounds): CoordinateSystem {
-    return createCoordinateSystem(this.layout, bounds);
+    this.syncDynamicLayout();
+    return createCoordinateSystem(this.layout, this.getVisibleBounds(bounds));
   }
 
   clientPointToModel(
@@ -220,6 +234,7 @@ export class ChangeOfBasisPlotRenderer {
     clientY: number,
     bounds: PlotBounds
   ): Vector2<number> | null {
+    this.syncDynamicLayout();
     const svgPoint = this.clientPointToSvg(clientX, clientY);
     if (!svgPoint) {
       return null;
@@ -231,30 +246,12 @@ export class ChangeOfBasisPlotRenderer {
 
   snapModelPoint(
     point: Vector2<number>,
-    bounds: PlotBounds,
-    options: { snapPixels?: number; clickPrecision?: number } = {}
+    bounds: PlotBounds
   ): PlotSnapResult {
-    const coordinates = this.getCoordinateSystem(bounds);
-    const cssScale = this.viewBoxCssScale();
-    const xTicks = computeAdaptiveTicks(
-      bounds.xMin,
-      bounds.xMax,
-      coordinates.innerWidth * cssScale
-    );
-    const yTicks = computeAdaptiveTicks(
-      bounds.yMin,
-      bounds.yMax,
-      coordinates.innerHeight * cssScale
-    );
-
+    this.syncDynamicLayout();
+    const visibleBounds = this.getVisibleBounds(bounds);
     return snapPlotPoint(point, {
-      bounds,
-      scaleX: coordinates.scaleX * cssScale,
-      scaleY: coordinates.scaleY * cssScale,
-      xTicks,
-      yTicks,
-      snapPixels: options.snapPixels,
-      clickPrecision: options.clickPrecision
+      bounds: visibleBounds
     });
   }
 
@@ -272,12 +269,9 @@ export class ChangeOfBasisPlotRenderer {
     coordinates: CoordinateSystem,
     bounds: PlotBounds,
     xTicks: readonly number[],
-    yTicks: readonly number[],
-    cssScale: number
+    yTicks: readonly number[]
   ): void {
     const gridCommands: string[] = [];
-    const tickNodes: SVGElement[] = [];
-    const tickFontSize = Math.min(44, Math.max(17, 13 / Math.max(cssScale, 0.1)));
 
     xTicks.forEach((tick) => {
       const point = coordinates.modelToSvg({ x: tick, y: bounds.yMin });
@@ -285,16 +279,6 @@ export class ChangeOfBasisPlotRenderer {
         `M ${formatCoordinate(point.x)} ${formatCoordinate(coordinates.innerTop)} ` +
           `L ${formatCoordinate(point.x)} ${formatCoordinate(coordinates.innerTop + coordinates.innerHeight)}`
       );
-      const label = createSvgElement("text", {
-        x: point.x,
-        y: coordinates.innerTop + coordinates.innerHeight + 27,
-        "text-anchor": "middle",
-        class: "plot-tick-label",
-        style: `font-size:${tickFontSize}px`,
-        "aria-hidden": "true"
-      });
-      label.textContent = formatTick(tick);
-      tickNodes.push(label);
     });
 
     yTicks.forEach((tick) => {
@@ -303,16 +287,6 @@ export class ChangeOfBasisPlotRenderer {
         `M ${formatCoordinate(coordinates.innerLeft)} ${formatCoordinate(point.y)} ` +
           `L ${formatCoordinate(coordinates.innerLeft + coordinates.innerWidth)} ${formatCoordinate(point.y)}`
       );
-      const label = createSvgElement("text", {
-        x: coordinates.innerLeft - 13,
-        y: point.y + 4,
-        "text-anchor": "end",
-        class: "plot-tick-label",
-        style: `font-size:${tickFontSize}px`,
-        "aria-hidden": "true"
-      });
-      label.textContent = formatTick(tick);
-      tickNodes.push(label);
     });
 
     const grid = createSvgElement("path", {
@@ -326,24 +300,21 @@ export class ChangeOfBasisPlotRenderer {
       y: coordinates.innerTop,
       width: coordinates.innerWidth,
       height: coordinates.innerHeight,
-      rx: 14,
+      rx: 0,
       fill: "transparent",
-      stroke: "var(--frame-stroke, #aebbc7)",
-      "stroke-width": 1.5,
+      stroke: "none",
       "data-plot-frame": "true"
     });
 
     this.gridLayer.replaceChildren(grid, frame);
-    this.tickLayer.replaceChildren(...tickNodes);
+    this.tickLayer.replaceChildren();
   }
 
   private renderAxes(
     coordinates: CoordinateSystem,
-    bounds: PlotBounds,
-    cssScale: number
+    bounds: PlotBounds
   ): void {
     const nodes: SVGElement[] = [];
-    const axisFontSize = Math.min(52, Math.max(21, 15 / Math.max(cssScale, 0.1)));
 
     if (bounds.yMin <= 0 && bounds.yMax >= 0) {
       const y = coordinates.modelToSvg({ x: bounds.xMin, y: 0 }).y;
@@ -357,16 +328,6 @@ export class ChangeOfBasisPlotRenderer {
           "stroke-width": 1.8
         })
       );
-      const xLabel = createSvgElement("text", {
-        x: coordinates.innerLeft + coordinates.innerWidth - 10,
-        y: y - 10,
-        class: "plot-axis-label",
-        style: `font-size:${axisFontSize}px`,
-        "text-anchor": "end",
-        "aria-hidden": "true"
-      });
-      xLabel.textContent = "x";
-      nodes.push(xLabel);
     }
 
     if (bounds.xMin <= 0 && bounds.xMax >= 0) {
@@ -381,15 +342,6 @@ export class ChangeOfBasisPlotRenderer {
           "stroke-width": 1.8
         })
       );
-      const yLabel = createSvgElement("text", {
-        x: x + 11,
-        y: coordinates.innerTop + 18,
-        class: "plot-axis-label",
-        style: `font-size:${axisFontSize}px`,
-        "aria-hidden": "true"
-      });
-      yLabel.textContent = "y";
-      nodes.push(yLabel);
     }
 
     if (
@@ -469,16 +421,40 @@ export class ChangeOfBasisPlotRenderer {
     });
 
     if (drewStandardFirst) {
-      this.queueEndpointLabel(coordinates, standardFirst, "e₁", PLOT_COLORS.standardFirst);
+      this.queueEndpointLabel(
+        coordinates,
+        standardFirst,
+        "e₁",
+        "\\vec{e}_1",
+        PLOT_COLORS.standardFirst
+      );
     }
     if (drewStandardSecond) {
-      this.queueEndpointLabel(coordinates, standardSecond, "e₂", PLOT_COLORS.standardSecond);
+      this.queueEndpointLabel(
+        coordinates,
+        standardSecond,
+        "e₂",
+        "\\vec{e}_2",
+        PLOT_COLORS.standardSecond
+      );
     }
     if (drewPrimeFirst) {
-      this.queueEndpointLabel(coordinates, primeFirst, "e′₁", PLOT_COLORS.primeFirst);
+      this.queueEndpointLabel(
+        coordinates,
+        primeFirst,
+        "e′₁",
+        "\\vec{e}^{\\prime}_1",
+        PLOT_COLORS.primeFirst
+      );
     }
     if (drewPrimeSecond) {
-      this.queueEndpointLabel(coordinates, primeSecond, "e′₂", PLOT_COLORS.primeSecond);
+      this.queueEndpointLabel(
+        coordinates,
+        primeSecond,
+        "e′₂",
+        "\\vec{e}^{\\prime}_2",
+        PLOT_COLORS.primeSecond
+      );
     }
   }
 
@@ -528,6 +504,7 @@ export class ChangeOfBasisPlotRenderer {
           origin,
           firstEndpoint,
           `${formatScalar(viewModel.coordinates.standard.x)} e₁`,
+          `${formatScalarTex(viewModel.coordinates.standard.x)}\\,\\vec{e}_1`,
           PLOT_COLORS.standardFirst
         );
       }
@@ -537,6 +514,7 @@ export class ChangeOfBasisPlotRenderer {
           firstEndpoint,
           vector,
           `${formatScalar(viewModel.coordinates.standard.y)} e₂`,
+          `${formatScalarTex(viewModel.coordinates.standard.y)}\\,\\vec{e}_2`,
           PLOT_COLORS.standardSecond
         );
       }
@@ -582,6 +560,7 @@ export class ChangeOfBasisPlotRenderer {
           origin,
           firstEndpoint,
           `${formatScalar(viewModel.coordinates.prime.x)} e′₁`,
+          `${formatScalarTex(viewModel.coordinates.prime.x)}\\,\\vec{e}^{\\prime}_1`,
           PLOT_COLORS.primeFirst
         );
       }
@@ -591,6 +570,7 @@ export class ChangeOfBasisPlotRenderer {
           firstEndpoint,
           vector,
           `${formatScalar(viewModel.coordinates.prime.y)} e′₂`,
+          `${formatScalarTex(viewModel.coordinates.prime.y)}\\,\\vec{e}^{\\prime}_2`,
           PLOT_COLORS.primeSecond
         );
       }
@@ -611,7 +591,7 @@ export class ChangeOfBasisPlotRenderer {
       width: 5,
       showZeroMarker: true
     });
-    this.queueEndpointLabel(coordinates, vector, "v", PLOT_COLORS.selected);
+    this.queueEndpointLabel(coordinates, vector, "v", "\\vec{v}", PLOT_COLORS.selected);
   }
 
   private drawArrow(
@@ -673,6 +653,7 @@ export class ChangeOfBasisPlotRenderer {
     coordinates: CoordinateSystem,
     endpoint: Vector2<number>,
     text: string,
+    tex: string,
     color: string
   ): void {
     if (!Number.isFinite(endpoint.x) || !Number.isFinite(endpoint.y)) {
@@ -692,6 +673,7 @@ export class ChangeOfBasisPlotRenderer {
     const unitY = length > ZERO_LENGTH_TOLERANCE ? directionY / length : -1;
     this.queueAnnotation(
       text,
+      tex,
       color,
       clampAnnotationPoint(
         {
@@ -709,6 +691,7 @@ export class ChangeOfBasisPlotRenderer {
     start: Vector2<number>,
     end: Vector2<number>,
     text: string,
+    tex: string,
     color: string
   ): void {
     if (![start.x, start.y, end.x, end.y].every(Number.isFinite)) {
@@ -730,6 +713,7 @@ export class ChangeOfBasisPlotRenderer {
 
     this.queueAnnotation(
       text,
+      tex,
       color,
       clampAnnotationPoint(
         {
@@ -744,6 +728,7 @@ export class ChangeOfBasisPlotRenderer {
 
   private queueAnnotation(
     text: string,
+    tex: string,
     color: string,
     svgPoint: SvgPoint,
     coordinates: CoordinateSystem
@@ -758,9 +743,10 @@ export class ChangeOfBasisPlotRenderer {
         "text-anchor": "middle",
         "dominant-baseline": "central",
         "data-annotation": text,
-        "aria-hidden": "true"
+        "aria-label": text,
+        role: "math"
       });
-      fallback.textContent = text;
+      fallback.textContent = formatVectorLabelFallback(text);
       this.fallbackLabelLayer.append(fallback);
       return;
     }
@@ -768,19 +754,20 @@ export class ChangeOfBasisPlotRenderer {
     const element = document.createElement("div");
     element.className = "plot-annotation";
     element.dataset.annotation = text;
-    element.textContent = text;
-    element.setAttribute("aria-hidden", "true");
+    element.setAttribute("role", "math");
+    element.setAttribute("aria-label", text);
     element.style.position = "absolute";
     element.style.pointerEvents = "none";
     element.style.transform = "translate(-50%, -50%)";
     element.style.color = color;
     element.style.whiteSpace = "nowrap";
     element.style.fontWeight = "700";
-    element.style.fontSize = "0.88rem";
+    element.style.fontSize = "1.08rem";
     element.style.lineHeight = "1";
     element.style.padding = "0.2rem 0.36rem";
     element.style.borderRadius = "999px";
     element.style.background = "color-mix(in srgb, var(--plot-surface, #fffdf8) 88%, transparent)";
+    renderAnnotationMath(element, tex, formatVectorLabelFallback(text));
     this.annotationLayer.append(element);
     this.annotations.push({ element, svgPoint: resolvedPoint });
   }
@@ -823,7 +810,6 @@ export class ChangeOfBasisPlotRenderer {
     const layer = document.createElement("div");
     layer.className = "plot-annotation-layer";
     layer.dataset.plotOwner = this.instanceId;
-    layer.setAttribute("aria-hidden", "true");
     layer.style.position = "absolute";
     layer.style.inset = "0";
     layer.style.pointerEvents = "none";
@@ -861,7 +847,7 @@ export class ChangeOfBasisPlotRenderer {
       y: coordinates.innerTop,
       width: coordinates.innerWidth,
       height: coordinates.innerHeight,
-      rx: 14
+      rx: 0
     });
   }
 
@@ -869,7 +855,7 @@ export class ChangeOfBasisPlotRenderer {
     const selected = viewModel.state.selectedVector;
     this.description.textContent = selected
       ? `The standard basis B is green and red; B prime is blue and purple. ` +
-        `The selected black vector ends at (${formatScalar(selected.x)}, ${formatScalar(selected.y)}).`
+        `The selected vector ends at (${formatScalar(selected.x)}, ${formatScalar(selected.y)}).`
       : "The standard basis B is green and red. The user-defined basis B prime is blue and purple. No vector is selected.";
   }
 
@@ -912,10 +898,136 @@ export class ChangeOfBasisPlotRenderer {
     }
     return Math.min(rect.width / this.layout.width, rect.height / this.layout.height);
   }
+
+  private getVisibleBounds(bounds: PlotBounds): PlotBounds {
+    return this.dynamicLayout ? expandPlotBoundsToAspect(bounds, this.layout) : bounds;
+  }
+
+  /** Keeps the default view box in lockstep with its responsive CSS rectangle. */
+  private syncDynamicLayout(): boolean {
+    if (!this.dynamicLayout) {
+      return false;
+    }
+
+    const rect = this.svg.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return false;
+    }
+
+    const width = roundViewportDimension(rect.width);
+    const height = roundViewportDimension(rect.height);
+    if (
+      Math.abs(width - this.layout.width) < 0.25 &&
+      Math.abs(height - this.layout.height) < 0.25
+    ) {
+      return false;
+    }
+
+    this.layout = {
+      width,
+      height,
+      padding: { ...ZERO_PLOT_PADDING }
+    };
+    this.svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    setAttributes(this.backgroundRect, { width, height });
+    return true;
+  }
 }
 
 /** Short alias for application code. */
 export { ChangeOfBasisPlotRenderer as PlotRenderer };
+
+/**
+ * Returns a bounded set of integer model coordinates for full-bleed grid lines.
+ * Large ranges use a wider integral stride instead of producing an unbounded
+ * SVG path or overflowing while counting the candidate integers.
+ */
+export function computeIntegerGridTicks(
+  min: number,
+  max: number,
+  maxTicks = DEFAULT_MAX_INTEGER_GRID_LINES
+): number[] {
+  if (!Number.isFinite(min) || !Number.isFinite(max) || min > max) {
+    return [];
+  }
+
+  const requestedLimit = Number.isFinite(maxTicks)
+    ? Math.floor(maxTicks)
+    : DEFAULT_MAX_INTEGER_GRID_LINES;
+  const limit = Math.max(1, Math.min(2048, requestedLimit));
+  const firstInteger = Math.ceil(min);
+  const lastInteger = Math.floor(max);
+  if (firstInteger > lastInteger) {
+    return [];
+  }
+  if (limit === 1) {
+    return [min <= 0 && max >= 0 ? 0 : firstInteger];
+  }
+
+  const span = max - min;
+  const fallbackSpan =
+    (Math.max(Math.abs(min), Math.abs(max)) / Math.max(1, limit - 1)) * 2;
+  const strideEstimate = Number.isFinite(span)
+    ? span / Math.max(1, limit - 1)
+    : fallbackSpan;
+  const stride = Math.max(1, Math.ceil(strideEstimate));
+  const alignedStart = stride === 1
+    ? firstInteger
+    : Math.ceil(firstInteger / stride) * stride;
+  const ticks: number[] = [];
+
+  for (let index = 0; index < limit; index += 1) {
+    const tick = alignedStart + index * stride;
+    if (!Number.isFinite(tick) || tick > lastInteger) {
+      break;
+    }
+    ticks.push(Object.is(tick, -0) ? 0 : tick);
+  }
+
+  return ticks;
+}
+
+/**
+ * Expands the shorter requested model range so the padded Cartesian frame uses
+ * the full viewport while retaining exactly the same scale on both axes.
+ */
+export function expandPlotBoundsToAspect(
+  bounds: PlotBounds,
+  layout: PlotLayout
+): PlotBounds {
+  // Reuse the coordinate-system validation before performing aspect arithmetic.
+  createCoordinateSystem(layout, bounds);
+  const availableWidth = layout.width - layout.padding.left - layout.padding.right;
+  const availableHeight = layout.height - layout.padding.top - layout.padding.bottom;
+  const targetAspect = availableWidth / availableHeight;
+  const xSpan = bounds.xMax - bounds.xMin;
+  const ySpan = bounds.yMax - bounds.yMin;
+  const rangeAspect = xSpan / ySpan;
+  const centerX = bounds.xMin + xSpan / 2;
+  const centerY = bounds.yMin + ySpan / 2;
+
+  if (Math.abs(rangeAspect - targetAspect) <= Number.EPSILON * Math.max(rangeAspect, targetAspect, 1) * 8) {
+    return { ...bounds };
+  }
+
+  if (rangeAspect < targetAspect) {
+    const expandedXSpan = ySpan * targetAspect;
+    return {
+      xMin: centerX - expandedXSpan / 2,
+      xMax: centerX + expandedXSpan / 2,
+      yMin: bounds.yMin,
+      yMax: bounds.yMax
+    };
+  }
+
+  const expandedYSpan = xSpan / targetAspect;
+  return {
+    xMin: bounds.xMin,
+    xMax: bounds.xMax,
+    yMin: centerY - expandedYSpan / 2,
+    yMax: centerY + expandedYSpan / 2
+  };
+}
 
 function createLayer(name: string, clipId?: string): SVGGElement {
   return createSvgElement("g", {
@@ -1021,6 +1133,45 @@ function formatScalar(value: ScalarValue): string {
 
   const normalized = Object.is(value.value, -0) ? 0 : value.value;
   return `≈${Number(normalized.toFixed(4))}`;
+}
+
+function formatScalarTex(value: ScalarValue): string {
+  if (value.kind === "exact") {
+    return formatRationalTex(value.value);
+  }
+
+  const normalized = Object.is(value.value, -0) ? 0 : value.value;
+  return `\\approx ${Number(normalized.toFixed(4))}`;
+}
+
+function formatVectorLabelFallback(text: string): string {
+  return text
+    .replaceAll("e′₁", "e⃗′₁")
+    .replaceAll("e′₂", "e⃗′₂")
+    .replaceAll("e₁", "e⃗₁")
+    .replaceAll("e₂", "e⃗₂")
+    .replaceAll("v", "v⃗");
+}
+
+function renderAnnotationMath(element: HTMLElement, tex: string, fallback: string): void {
+  try {
+    katex.render(tex, element, {
+      displayMode: false,
+      output: "htmlAndMathml",
+      throwOnError: false,
+      strict: "ignore"
+    });
+  } catch {
+    element.textContent = fallback;
+  }
+}
+
+function cloneLayout(layout: PlotLayout): PlotLayout {
+  return { width: layout.width, height: layout.height, padding: { ...layout.padding } };
+}
+
+function roundViewportDimension(value: number): number {
+  return Math.max(1, Number(value.toFixed(2)));
 }
 
 function clampAnnotationPoint(point: SvgPoint, coordinates: CoordinateSystem): SvgPoint {

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -12,169 +12,207 @@
   </head>
   <body>
     <div class="app-shell">
-      <aside class="panel control-panel" aria-label="Explorer controls and results">
-        <header class="panel-heading">
-          <p class="eyebrow">Linear algebra explorer</p>
-          <h1>See one vector through two coordinate systems</h1>
-          <div id="hero-bases" class="hero-bases" aria-label="Bases B and B prime"></div>
-          <p class="panel-copy">
-            Choose the primed basis, then click the plane or enter a vector to compare its
-            coordinates and components.
-          </p>
-        </header>
-
-        <form id="basis-form" class="card" novalidate>
-          <div class="section-header">
-            <div>
-              <p class="card-kicker">User-defined basis</p>
-              <h2 id="basis-form-title"></h2>
-            </div>
-            <button class="secondary-button compact-button" type="submit">Update basis</button>
-          </div>
-          <div class="vector-entry-grid">
-            <fieldset class="vector-fieldset basis-first">
-              <legend id="basis-first-label"></legend>
-              <label class="field">
-                <span class="field-label">x component</span>
-                <input id="basis-first-x" type="text" inputmode="text" value="1" maxlength="64" autocomplete="off" aria-describedby="basis-first-x-error" />
-                <span id="basis-first-x-error" class="field-error"></span>
-              </label>
-              <label class="field">
-                <span class="field-label">y component</span>
-                <input id="basis-first-y" type="text" inputmode="text" value="1" maxlength="64" autocomplete="off" aria-describedby="basis-first-y-error" />
-                <span id="basis-first-y-error" class="field-error"></span>
-              </label>
-            </fieldset>
-            <fieldset class="vector-fieldset basis-second">
-              <legend id="basis-second-label"></legend>
-              <label class="field">
-                <span class="field-label">x component</span>
-                <input id="basis-second-x" type="text" inputmode="text" value="-1" maxlength="64" autocomplete="off" aria-describedby="basis-second-x-error" />
-                <span id="basis-second-x-error" class="field-error"></span>
-              </label>
-              <label class="field">
-                <span class="field-label">y component</span>
-                <input id="basis-second-y" type="text" inputmode="text" value="1" maxlength="64" autocomplete="off" aria-describedby="basis-second-y-error" />
-                <span id="basis-second-y-error" class="field-error"></span>
-              </label>
-            </fieldset>
-          </div>
-          <p class="field-help">Exact values are welcome: integers, decimals, or fractions such as <code>-3/2</code>.</p>
-          <p id="basis-form-error" class="form-error" aria-live="polite"></p>
-        </form>
-
-        <div class="compact-card-grid">
-          <form id="vector-form" class="card" novalidate>
-            <div class="section-header">
-              <div>
-                <p class="card-kicker">Selected vector</p>
-                <h2 id="vector-form-title"></h2>
-              </div>
-              <button id="set-vector-button" class="secondary-button compact-button" type="submit">Set vector</button>
-            </div>
-            <div class="coordinate-input-row">
-              <label class="field">
-                <span class="field-label">v<sub>x</sub></span>
-                <input id="vector-x" type="text" inputmode="text" placeholder="Click the plot" maxlength="64" autocomplete="off" aria-describedby="vector-x-error" />
-                <span id="vector-x-error" class="field-error"></span>
-              </label>
-              <label class="field">
-                <span class="field-label">v<sub>y</sub></span>
-                <input id="vector-y" type="text" inputmode="text" placeholder="Click the plot" maxlength="64" autocomplete="off" aria-describedby="vector-y-error" />
-                <span id="vector-y-error" class="field-error"></span>
-              </label>
-            </div>
-            <button id="clear-vector-button" class="ghost-button inline-button" type="button">Clear vector</button>
-            <p id="vector-form-error" class="form-error" aria-live="polite"></p>
-          </form>
-
-          <form id="bounds-form" class="card" novalidate>
-            <div class="section-header">
-              <div>
-                <p class="card-kicker">Plot settings</p>
-                <h2>Visible window</h2>
-              </div>
-              <button id="apply-bounds-button" class="secondary-button compact-button" type="submit">Update view</button>
-            </div>
-            <div class="bounds-grid">
-              <label class="field"><span class="field-label">x min</span><input id="x-min-input" type="number" step="any" value="-4" aria-describedby="bounds-form-error" /></label>
-              <label class="field"><span class="field-label">x max</span><input id="x-max-input" type="number" step="any" value="4" aria-describedby="bounds-form-error" /></label>
-              <label class="field"><span class="field-label">y min</span><input id="y-min-input" type="number" step="any" value="-4" aria-describedby="bounds-form-error" /></label>
-              <label class="field"><span class="field-label">y max</span><input id="y-max-input" type="number" step="any" value="4" aria-describedby="bounds-form-error" /></label>
-            </div>
-            <p id="bounds-form-error" class="form-error" aria-live="polite"></p>
-          </form>
-        </div>
-
-        <section class="card action-card">
-          <div class="toggle-grid">
-            <label class="toggle-row" for="standard-components-toggle">
-              <span><span class="toggle-title">Show <span id="standard-toggle-math"></span> components</span><span class="toggle-copy">Green, then red.</span></span>
-              <input id="standard-components-toggle" class="toggle-input" type="checkbox" />
-              <span class="toggle-pill" aria-hidden="true"></span>
-            </label>
-            <label class="toggle-row" for="prime-components-toggle">
-              <span><span class="toggle-title">Show <span id="prime-toggle-math"></span> components</span><span class="toggle-copy">Blue, then purple.</span></span>
-              <input id="prime-components-toggle" class="toggle-input" type="checkbox" />
-              <span class="toggle-pill" aria-hidden="true"></span>
-            </label>
-          </div>
-          <button id="reset-button" class="primary-button" type="button">Reset example</button>
-        </section>
-
-        <section class="card results-card" aria-labelledby="results-heading">
-          <div class="section-header result-heading-row">
-            <div>
-              <p class="card-kicker">Coordinates and transformations</p>
-              <h2 id="results-heading">Change of basis</h2>
-            </div>
-            <span id="basis-status" class="status-chip"></span>
-          </div>
-          <div class="status-row"><span class="status-label">Determinant</span><span id="determinant-output" class="math-output"></span></div>
-          <div class="coordinate-results">
-            <div class="result-tile"><span class="status-label">Coordinates in <span id="standard-coordinate-label"></span></span><div id="standard-coordinate-output" class="math-output large-math"></div></div>
-            <div class="result-tile"><span class="status-label">Coordinates in <span id="prime-coordinate-label"></span></span><div id="prime-coordinate-output" class="math-output large-math"></div></div>
-          </div>
-          <div class="matrix-results">
-            <article class="matrix-card">
-              <h3><span id="to-standard-heading"></span> coordinates</h3>
-              <div id="matrix-to-standard" class="math-output matrix-output"></div>
-              <div id="mapping-to-standard" class="math-output mapping-output"></div>
-            </article>
-            <article class="matrix-card">
-              <h3><span id="to-prime-heading"></span> coordinates</h3>
-              <div id="matrix-to-prime" class="math-output matrix-output"></div>
-              <div id="mapping-to-prime" class="math-output mapping-output"></div>
-            </article>
-          </div>
-          <ul id="notice-list" class="notice-list" aria-live="polite"></ul>
-          <p id="interaction-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></p>
-        </section>
-      </aside>
-
-      <main class="panel plot-panel" aria-labelledby="plot-heading">
-        <div class="plot-header">
-          <div>
-            <h2 id="plot-heading" class="eyebrow">Cartesian plane</h2>
-            <p class="plot-help">Click inside the frame to choose the endpoint of <span id="plot-vector-symbol"></span>.</p>
-          </div>
-          <div class="plot-legend" aria-label="Vector color legend">
-            <span class="legend-item color-standard-first"><span></span><span id="legend-e1"></span></span>
-            <span class="legend-item color-standard-second"><span></span><span id="legend-e2"></span></span>
-            <span class="legend-item color-prime-first"><span></span><span id="legend-e1-prime"></span></span>
-            <span class="legend-item color-prime-second"><span></span><span id="legend-e2-prime"></span></span>
-            <span class="legend-item color-vector"><span></span><span id="legend-v"></span></span>
-          </div>
-        </div>
+      <main class="plot-panel" aria-labelledby="plot-heading">
+        <h1 id="plot-heading" class="sr-only">Interactive Cartesian plane</h1>
         <div class="plot-stage">
           <div class="plot-square">
-            <svg id="basis-plot" viewBox="0 0 800 800" role="img" aria-labelledby="plot-title plot-description">
+            <svg
+              id="basis-plot"
+              viewBox="0 0 800 800"
+              role="img"
+              aria-labelledby="plot-title plot-description"
+            >
               <title id="plot-title">Interactive change of basis diagram</title>
-              <desc id="plot-description">A Cartesian grid showing the standard basis, a user-defined basis, and a selected vector with optional component decompositions.</desc>
+              <desc id="plot-description">
+                A Cartesian grid showing the standard basis, a user-defined basis, and a selected
+                vector with its component decompositions.
+              </desc>
             </svg>
           </div>
         </div>
       </main>
+
+      <p id="plot-prompt" class="plot-prompt" role="status" aria-live="polite">
+        Click on the grid to generate a vector
+      </p>
+
+      <section
+        id="vector-coordinates-card"
+        class="vector-coordinates-card"
+        aria-label="Selected vector coordinates"
+        hidden
+      >
+        <div id="vector-coordinate-standard" class="vector-coordinate-line"></div>
+        <div id="vector-coordinate-prime" class="vector-coordinate-line"></div>
+      </section>
+
+      <button
+        id="theme-toggle"
+        class="theme-toggle"
+        type="button"
+        aria-pressed="true"
+        aria-label="Switch to light mode"
+      >
+        <span id="theme-toggle-icon" class="theme-toggle-icon" aria-hidden="true">☀</span>
+        <span id="theme-toggle-label">Light mode</span>
+      </button>
+
+      <aside class="control-rail" aria-label="Change of basis controls">
+        <form id="basis-form" class="control-section" novalidate>
+          <div class="section-heading">
+            <h2 id="basis-form-title"></h2>
+            <button class="compact-button" type="submit">Update</button>
+          </div>
+
+          <div class="vector-entry-grid">
+            <fieldset class="vector-fieldset basis-first">
+              <legend id="basis-first-label"></legend>
+              <label class="field">
+                <span class="field-label">x</span>
+                <input
+                  id="basis-first-x"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="[+-]?[0-9]+"
+                  value="1"
+                  maxlength="32"
+                  autocomplete="off"
+                  aria-describedby="basis-first-x-error"
+                />
+                <span id="basis-first-x-error" class="field-error"></span>
+              </label>
+              <label class="field">
+                <span class="field-label">y</span>
+                <input
+                  id="basis-first-y"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="[+-]?[0-9]+"
+                  value="1"
+                  maxlength="32"
+                  autocomplete="off"
+                  aria-describedby="basis-first-y-error"
+                />
+                <span id="basis-first-y-error" class="field-error"></span>
+              </label>
+            </fieldset>
+
+            <fieldset class="vector-fieldset basis-second">
+              <legend id="basis-second-label"></legend>
+              <label class="field">
+                <span class="field-label">x</span>
+                <input
+                  id="basis-second-x"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="[+-]?[0-9]+"
+                  value="-1"
+                  maxlength="32"
+                  autocomplete="off"
+                  aria-describedby="basis-second-x-error"
+                />
+                <span id="basis-second-x-error" class="field-error"></span>
+              </label>
+              <label class="field">
+                <span class="field-label">y</span>
+                <input
+                  id="basis-second-y"
+                  type="text"
+                  inputmode="numeric"
+                  pattern="[+-]?[0-9]+"
+                  value="1"
+                  maxlength="32"
+                  autocomplete="off"
+                  aria-describedby="basis-second-y-error"
+                />
+                <span id="basis-second-y-error" class="field-error"></span>
+              </label>
+            </fieldset>
+          </div>
+          <p id="basis-form-error" class="form-error" aria-live="polite"></p>
+        </form>
+
+        <form id="vector-form" class="control-section" novalidate>
+          <div class="section-heading">
+            <h2 id="vector-form-title"></h2>
+            <div class="button-row">
+              <button id="clear-vector-button" class="ghost-button compact-button" type="button">
+                Clear
+              </button>
+              <button id="set-vector-button" class="compact-button" type="submit">Set</button>
+            </div>
+          </div>
+          <div class="coordinate-input-row">
+            <label class="field">
+              <span class="field-label">v<sub>x</sub></span>
+              <input
+                id="vector-x"
+                type="text"
+                inputmode="numeric"
+                pattern="[+-]?[0-9]+"
+                placeholder="x"
+                maxlength="32"
+                autocomplete="off"
+                aria-describedby="vector-x-error"
+              />
+              <span id="vector-x-error" class="field-error"></span>
+            </label>
+            <label class="field">
+              <span class="field-label">v<sub>y</sub></span>
+              <input
+                id="vector-y"
+                type="text"
+                inputmode="numeric"
+                pattern="[+-]?[0-9]+"
+                placeholder="y"
+                maxlength="32"
+                autocomplete="off"
+                aria-describedby="vector-y-error"
+              />
+              <span id="vector-y-error" class="field-error"></span>
+            </label>
+          </div>
+          <p id="vector-form-error" class="form-error" aria-live="polite"></p>
+        </form>
+
+        <section class="control-section component-controls" aria-label="Component arrows">
+          <label class="toggle-row" for="standard-components-toggle">
+            <span>Components in <span id="standard-toggle-math"></span></span>
+            <input id="standard-components-toggle" class="toggle-input" type="checkbox" checked />
+            <span class="toggle-pill" aria-hidden="true"></span>
+          </label>
+          <label class="toggle-row" for="prime-components-toggle">
+            <span>Components in <span id="prime-toggle-math"></span></span>
+            <input id="prime-components-toggle" class="toggle-input" type="checkbox" checked />
+            <span class="toggle-pill" aria-hidden="true"></span>
+          </label>
+        </section>
+
+        <section class="control-section results-section" aria-labelledby="results-heading">
+          <div class="section-heading matrix-heading">
+            <h2 id="results-heading">Matrices</h2>
+            <span id="basis-status" class="status-chip"></span>
+          </div>
+          <article class="matrix-card">
+            <h3 id="to-standard-heading"></h3>
+            <div id="matrix-to-standard" class="math-output matrix-output"></div>
+            <div id="mapping-to-standard" class="math-output mapping-output"></div>
+          </article>
+          <article class="matrix-card">
+            <h3 id="to-prime-heading"></h3>
+            <div id="matrix-to-prime" class="math-output matrix-output"></div>
+            <div id="mapping-to-prime" class="math-output mapping-output"></div>
+          </article>
+        </section>
+
+        <p
+          id="interaction-status"
+          class="sr-only"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        ></p>
+      </aside>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

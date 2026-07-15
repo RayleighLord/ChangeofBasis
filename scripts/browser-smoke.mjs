@@ -54,17 +54,16 @@ try {
   page.on("pageerror", (error) => browserErrors.push(error.message));
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  await assertHealthyInitialRender(page);
-  await assertKeyboardAccessibility(page);
-  await assertExactVectorAndDecompositions(page);
+  await assertMinimalInitialRender(page);
+  await assertThemeWorkflow(page);
+  await assertVectorWorkflow(page);
   await assertClickReplacementAndSnapping(page);
-  await assertTransactionalAndSingularBasisBehavior(page);
-  await assertBoundsValidation(page);
-  await assertResponsiveResizeReflow(page);
-  await assertResponsiveLayout(page);
+  await assertIntegerBasisAndSingularStates(page);
+  await assertResponsiveCanvas(page);
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.locator("#reset-button").click();
+  await restoreDefaultBasis(page);
+  await page.locator("#clear-vector-button").click();
   await page.screenshot({
     path: new URL("browser-smoke.png", artifactDir).pathname,
     fullPage: true
@@ -78,356 +77,497 @@ try {
   await waitForExit(preview);
 }
 
-async function assertHealthyInitialRender(page) {
+async function assertMinimalInitialRender(page) {
   assert.equal(await page.title(), "Change of Basis Explorer");
   assert.equal(await page.locator("#basis-status").textContent(), "Valid basis");
+  assert.equal(await page.locator("#standard-components-toggle").isChecked(), true);
+  assert.equal(await page.locator("#prime-components-toggle").isChecked(), true);
+  assert.equal(
+    (await page.locator("#plot-prompt").textContent())?.trim(),
+    "Click on the grid to generate a vector"
+  );
+  assert.equal(await page.locator("#plot-prompt").isVisible(), true);
+  assert.equal(await page.locator("#vector-coordinates-card").count(), 1);
+  assert.equal(
+    await page.locator("#vector-coordinates-card").isVisible(),
+    false,
+    "The coordinate card should stay out of the way until a vector is selected."
+  );
+  assert.equal(await page.locator("#vector-coordinate-standard").count(), 1);
+  assert.equal(await page.locator("#vector-coordinate-prime").count(), 1);
   assert.equal(await page.locator('[data-arrow="basis-e1"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="basis-e2"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="basis-prime-e1"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="basis-prime-e2"]').count(), 1);
   assert.equal(await page.locator('[data-layer="selected-vector"] > *').count(), 0);
+  assert.equal(
+    await page.locator("html").getAttribute("data-theme"),
+    "dark",
+    "A fresh browser context must start in dark mode."
+  );
+  assert.equal(await page.locator("#theme-toggle").count(), 1);
+  assert.equal(await page.locator("#theme-toggle").isVisible(), true);
+
+  assert.equal(await page.locator("#bounds-form").count(), 0);
+  assert.equal(await page.locator("#reset-button").count(), 0);
+  assert.equal(await page.locator(".plot-legend").count(), 0);
+  assert.equal(await page.locator("#determinant-output").count(), 0);
+  assert.equal(await page.locator("#standard-coordinate-output").count(), 0);
+  assert.equal(await page.locator('[data-layer="tick-labels"] > *').count(), 0);
+  assert.equal(await page.locator('[data-layer="axes"] text').count(), 0);
+
   const toStandardText = normalizeMath(await page.locator("#matrix-to-standard").textContent());
   const toPrimeText = normalizeMath(await page.locator("#matrix-to-prime").textContent());
   assert.ok(toStandardText.includes("P") && /[−-]1/.test(toStandardText));
   assert.ok(toPrimeText.includes("P") && toPrimeText.includes("2") && /[−-]/.test(toPrimeText));
+  assert.match(normalizeMath(await page.locator("#mapping-to-standard").textContent()), /P/);
+  assert.match(normalizeMath(await page.locator("#mapping-to-prime").textContent()), /P/);
+  for (const selector of ["#matrix-to-standard", "#matrix-to-prime"]) {
+    const matrixFontSize = await page
+      .locator(`${selector} .katex`)
+      .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+    assert.ok(matrixFontSize >= 19, `${selector} must use the enlarged matrix typography.`);
+  }
 
-  const square = await page.locator(".plot-square").boundingBox();
-  assert.ok(square, "The plot square must have a browser bounding box.");
-  assert.ok(Math.abs(square.width - square.height) <= 1, "The Cartesian stage must be square.");
+  const canvas = await page.locator("#basis-plot").boundingBox();
+  const rail = await page.locator(".control-rail").boundingBox();
+  assert.ok(canvas && rail);
+  assert.ok(Math.abs(canvas.width - 1440) <= 2 && Math.abs(canvas.height - 900) <= 2);
+  assert.ok(rail.x < 24 && rail.width < 380, "The controls must remain a compact left rail.");
+  assert.equal(await page.locator(".control-section").count(), 4);
+  const railChrome = await page.locator(".control-rail").evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { background: style.backgroundColor, border: style.borderTopWidth };
+  });
+  assert.equal(railChrome.background, "rgba(0, 0, 0, 0)");
+  assert.equal(railChrome.border, "0px");
 
   const e1 = await readArrow(page, "basis-e1");
   const e2 = await readArrow(page, "basis-e2");
   assert.ok(
     Math.abs(Math.abs(e1.x2 - e1.x1) - Math.abs(e2.y2 - e2.y1)) < 0.01,
-    "One horizontal model unit and one vertical model unit must use the same SVG distance."
+    "The full-screen canvas must preserve equal unit scale."
   );
+  assert.ok(Math.abs(e1.x2 - e1.x1) <= 70, "The default integer grid cells must be compact.");
+  await assertIntegerGridGeometry(page);
+
+  assert.equal(await page.locator("#basis-first-x").getAttribute("inputmode"), "numeric");
+  assert.equal(await page.locator("#vector-x").getAttribute("inputmode"), "numeric");
+  assert.equal(await page.locator("#vector-x").getAttribute("pattern"), "[+-]?[0-9]+");
+  await page.locator("#set-vector-button").focus();
+  const focusStyle = await page.locator("#set-vector-button").evaluate((node) => {
+    const style = getComputedStyle(node);
+    return { style: style.outlineStyle, width: Number.parseFloat(style.outlineWidth) };
+  });
+  assert.equal(focusStyle.style, "solid");
+  assert.ok(focusStyle.width >= 2);
 }
 
-async function assertExactVectorAndDecompositions(page) {
+async function assertThemeWorkflow(page) {
+  const root = page.locator("html");
+  const toggle = page.locator("#theme-toggle");
+  const initialLabel = (await toggle.textContent())?.trim();
+  const darkPalette = await readThemePalette(page);
+
+  assert.equal(await root.getAttribute("data-theme"), "dark");
+  assert.equal(await toggle.getAttribute("aria-pressed"), "true");
+  assert.match(initialLabel ?? "", /light/i, "Dark mode must offer a clear light-mode action.");
+  assert.match(
+    await root.evaluate((node) => getComputedStyle(node).colorScheme),
+    /dark/,
+    "The default theme must expose the dark color scheme to native controls."
+  );
+
+  await toggle.click();
+  assert.equal(await root.getAttribute("data-theme"), "light");
+  assert.equal(await toggle.getAttribute("aria-pressed"), "false");
+  const lightLabel = (await toggle.textContent())?.trim();
+  assert.notEqual(lightLabel, initialLabel, "The theme toggle label must describe the next theme.");
+  assert.match(lightLabel ?? "", /dark/i);
+  assert.match(await root.evaluate((node) => getComputedStyle(node).colorScheme), /light/);
+  const lightPalette = await readThemePalette(page);
+  assert.notEqual(
+    lightPalette.plotBackground,
+    darkPalette.plotBackground,
+    "Changing themes must visibly update the plot surface."
+  );
+  assert.notEqual(
+    lightPalette.controlBackground,
+    darkPalette.controlBackground,
+    "Changing themes must visibly update the control cards."
+  );
+
+  await toggle.click();
+  assert.equal(await root.getAttribute("data-theme"), "dark");
+  assert.equal(await toggle.getAttribute("aria-pressed"), "true");
+  assert.equal((await toggle.textContent())?.trim(), initialLabel);
+}
+
+async function readThemePalette(page) {
+  return page.evaluate(() => ({
+    plotBackground: getComputedStyle(document.querySelector(".plot-stage")).backgroundColor,
+    controlBackground: getComputedStyle(document.querySelector(".control-section")).backgroundColor
+  }));
+}
+
+async function assertVectorWorkflow(page) {
   await page.locator("#vector-x").fill("3");
   await page.locator("#vector-y").fill("1");
   await page.locator("#vector-y").press("Enter");
 
   assert.equal(await page.locator('[data-arrow="selected-vector"]').count(), 1);
-  assert.match(await page.locator("#interaction-status").textContent(), /Coordinate results updated/);
-  assert.match(normalizeMath(await page.locator("#standard-coordinate-output").textContent()), /3.*1/);
-  assert.match(normalizeMath(await page.locator("#prime-coordinate-output").textContent()), /2.*−1/);
-
-  await page.locator("#standard-components-toggle").focus();
-  await page.keyboard.press("Space");
-  await page.locator('label[for="prime-components-toggle"]').click();
-  assert.equal(await page.locator("#standard-components-toggle").isChecked(), true);
-  assert.equal(await page.locator("#prime-components-toggle").isChecked(), true);
+  assert.equal(await page.locator("#plot-prompt").isVisible(), false);
   assert.equal(await page.locator('[data-arrow="component-standard-e1"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="component-standard-e2"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="component-prime-e1"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="component-prime-e2"]').count(), 1);
+  assert.match(await page.locator("#interaction-status").textContent(), /Vector set/);
+  await assertCoordinateCard(page, { standard: ["3", "1"], prime: ["2", "-1"] });
 
-  const selectedLayerIndex = await page.locator('[data-layer="selected-vector"]').evaluate((node) =>
-    Array.from(node.parentElement?.children ?? []).indexOf(node)
+  for (const annotation of ["e₁", "e₂", "e′₁", "e′₂", "v"]) {
+    const label = page.locator(`[data-annotation="${annotation}"]`);
+    assert.equal(await label.count(), 1);
+    assert.equal(await label.locator(".katex").count(), 1, `${annotation} must be rendered by KaTeX.`);
+    assert.ok(await label.locator(".accent").count(), `${annotation} must carry a vector arrow accent.`);
+  }
+  const labelFontSize = await page
+    .locator('[data-annotation="v"]')
+    .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+  assert.ok(labelFontSize >= 16, "Plotted vector labels must be visually prominent.");
+
+  const selectedBeforeInvalidInput = await readArrow(page, "selected-vector");
+  await page.locator("#vector-x").fill("3/2");
+  await page.locator("#vector-y").fill("-2");
+  await page.locator("#vector-y").press("Enter");
+  assert.equal(await page.locator("#vector-x").getAttribute("aria-invalid"), "true");
+  assert.match(await page.locator("#vector-x-error").textContent(), /integer/i);
+  assert.deepEqual(
+    await readArrow(page, "selected-vector"),
+    selectedBeforeInvalidInput,
+    "Invalid manual coordinates must retain the previously selected vector."
   );
-  const primeLayerIndex = await page.locator('[data-layer="components-prime"]').evaluate((node) =>
-    Array.from(node.parentElement?.children ?? []).indexOf(node)
-  );
-  assert.ok(selectedLayerIndex > primeLayerIndex, "The black vector must render above components.");
+
+  await page.locator("#vector-x").fill("0");
+  await page.locator("#vector-y").fill("1");
+  await page.locator("#vector-y").press("Enter");
+  assert.equal(await page.locator('[data-arrow="component-standard-e1"]').count(), 0);
+  assert.equal(await page.locator('[data-arrow="component-standard-e2"]').count(), 1);
+  assert.equal(await page.locator("#vector-x").inputValue(), "0");
+
+  await page.locator("#clear-vector-button").click();
+  assert.equal(await page.locator('[data-layer="selected-vector"] > *').count(), 0);
+  assert.equal(await page.locator("#standard-components-toggle").isChecked(), true);
+  assert.equal(await page.locator("#prime-components-toggle").isChecked(), true);
+  assert.equal(await page.locator("#plot-prompt").isVisible(), true);
+  assert.equal(await page.locator("#vector-coordinates-card").isVisible(), false);
 }
 
 async function assertClickReplacementAndSnapping(page) {
-  const frame = await page.locator('[data-plot-frame="true"]').boundingBox();
-  assert.ok(frame, "The plot frame must be clickable.");
-
-  // In the default [-4,4]^2 view this is exactly the major-grid point (2,-1).
-  await page.mouse.click(frame.x + frame.width * 0.75, frame.y + frame.height * 0.625);
+  const clickGeometry = await page.locator("#basis-plot").evaluate((svg) => {
+    const e1 = svg.querySelector('[data-arrow="basis-e1"]');
+    const e2 = svg.querySelector('[data-arrow="basis-e2"]');
+    const matrix = svg.getScreenCTM();
+    if (!e1 || !e2 || !matrix || !(svg instanceof SVGSVGElement)) {
+      return null;
+    }
+    const transform = (x, y) => {
+      const point = svg.createSVGPoint();
+      point.x = x;
+      point.y = y;
+      return point.matrixTransform(matrix);
+    };
+    const origin = transform(Number(e1.getAttribute("x1")), Number(e1.getAttribute("y1")));
+    const oneX = transform(Number(e1.getAttribute("x2")), Number(e1.getAttribute("y2")));
+    const oneY = transform(Number(e2.getAttribute("x2")), Number(e2.getAttribute("y2")));
+    const xOffset = {
+      x: oneX.x - origin.x,
+      y: oneX.y - origin.y
+    };
+    const yOffset = {
+      x: oneY.x - origin.x,
+      y: oneY.y - origin.y
+    };
+    return {
+      x: origin.x + 2.42 * xOffset.x - 1.37 * yOffset.x,
+      y: origin.y + 2.42 * xOffset.y - 1.37 * yOffset.y,
+      legacySnapDistance: Math.hypot(0.42 * Math.hypot(xOffset.x, xOffset.y), 0.37 * Math.hypot(yOffset.x, yOffset.y))
+    };
+  });
+  assert.ok(clickGeometry);
+  assert.ok(
+    clickGeometry.legacySnapDistance > 10,
+    "The smoke click must exercise a point beyond the former ten-pixel threshold."
+  );
+  await page.mouse.click(clickGeometry.x, clickGeometry.y);
   assert.equal(await page.locator("#vector-x").inputValue(), "2");
   assert.equal(await page.locator("#vector-y").inputValue(), "-1");
-  assert.match(normalizeMath(await page.locator("#standard-coordinate-output").textContent()), /2.*−1/);
   assert.equal(await page.locator('[data-arrow="selected-vector"]').count(), 1);
+  assert.equal(await page.locator("#plot-prompt").isVisible(), false);
+  assert.equal(await page.locator("#vector-coordinates-card").isVisible(), true);
+
+  await page.evaluate(() => {
+    window.__plotContextMenuPrevented = false;
+    document.addEventListener(
+      "contextmenu",
+      (event) => {
+        window.__plotContextMenuPrevented = event.defaultPrevented;
+      },
+      { once: true }
+    );
+  });
+  await page.mouse.click(clickGeometry.x, clickGeometry.y, { button: "right" });
+  assert.equal(
+    await page.evaluate(() => window.__plotContextMenuPrevented),
+    true,
+    "Right-clicking the plot must suppress the native context menu."
+  );
+  assert.equal(await page.locator('[data-arrow="selected-vector"]').count(), 0);
+  assert.equal(await page.locator('[data-arrow="basis-e1"]').count(), 1);
+  assert.equal(await page.locator("#vector-x").inputValue(), "");
+  assert.equal(await page.locator("#vector-y").inputValue(), "");
+  assert.equal(await page.locator("#plot-prompt").isVisible(), true);
+  assert.equal(await page.locator("#vector-coordinates-card").isVisible(), false);
+  assert.match(await page.locator("#interaction-status").textContent(), /removed/i);
 }
 
-async function assertTransactionalAndSingularBasisBehavior(page) {
+async function assertIntegerBasisAndSingularStates(page) {
   const originalPrimeX = (await readArrow(page, "basis-prime-e1")).x2;
-  await page.locator("#basis-first-x").fill("sqrt(2)");
+  await page.locator("#basis-first-x").fill("1/2");
   await page.locator('#basis-form button[type="submit"]').click();
   assert.equal(await page.locator("#basis-first-x").getAttribute("aria-invalid"), "true");
-  assert.match(await page.locator("#basis-form-error").textContent(), /last applied basis/);
+  assert.match(await page.locator("#basis-first-x-error").textContent(), /integer/i);
   assert.equal((await readArrow(page, "basis-prime-e1")).x2, originalPrimeX);
-  assert.equal(await page.locator("#basis-status").textContent(), "Valid basis");
 
-  await page.locator("#basis-first-x").fill("1/2");
-  await page.locator("#basis-first-y").fill("1/3");
-  await page.locator("#basis-second-x").fill("-2");
-  await page.locator("#basis-second-y").fill("3/4");
-  await page.locator('#basis-form button[type="submit"]').click();
+  await setBasis(page, ["2", "1", "-1", "2"]);
   assert.equal(await page.locator("#basis-status").textContent(), "Valid basis");
-  assert.match(normalizeMath(await page.locator("#determinant-output").textContent()), /25.*24/);
+  assert.match(normalizeMath(await page.locator("#matrix-to-prime").textContent()), /5/);
 
-  await page.locator("#basis-second-x").fill("1/2");
-  await page.locator("#basis-second-y").fill("1/3");
-  await page.locator('#basis-form button[type="submit"]').click();
+  await setVector(page, "3", "1");
+  await assertCoordinateCard(page, { standard: ["3", "1"] });
+
+  await setBasis(page, ["1", "1", "1", "1"]);
   assert.equal(await page.locator("#basis-status").textContent(), "Not a basis");
   assert.equal(await page.locator("#prime-components-toggle").isDisabled(), true);
   assert.equal(await page.locator("#prime-components-toggle").isChecked(), false);
   assert.equal(await page.locator("#standard-components-toggle").isChecked(), true);
   assert.match(await page.locator("#matrix-to-prime").textContent(), /does not exist/);
-  assert.equal(await page.locator('[data-arrow="basis-prime-e1"]').count(), 1);
-  assert.equal(await page.locator('[data-arrow="basis-prime-e2"]').count(), 1);
-  assert.equal(await page.locator('[data-arrow="component-standard-e1"]').count(), 1);
-  assert.equal(await page.locator('[data-layer="components-prime"] > *').count(), 0);
-
-  const firstPrimeLabel = await page.locator('[data-annotation="e′₁"]').boundingBox();
-  const secondPrimeLabel = await page.locator('[data-annotation="e′₂"]').boundingBox();
-  assert.ok(firstPrimeLabel && secondPrimeLabel, "Both dependent candidate labels must be visible.");
-  assert.ok(
-    Math.hypot(
-      firstPrimeLabel.x + firstPrimeLabel.width / 2 -
-        (secondPrimeLabel.x + secondPrimeLabel.width / 2),
-      firstPrimeLabel.y + firstPrimeLabel.height / 2 -
-        (secondPrimeLabel.y + secondPrimeLabel.height / 2)
-    ) >= 16,
-    "Coincident candidate vectors must retain distinguishable labels."
-  );
-  assert.ok(
-    Number(await page.locator('[data-arrow="basis-prime-e1"]').getAttribute("stroke-width")) >
-      Number(await page.locator('[data-arrow="basis-prime-e2"]').getAttribute("stroke-width"))
-  );
   assert.ok(await page.locator('[data-arrow="basis-prime-e2"]').getAttribute("stroke-dasharray"));
+  await assertCoordinateCard(page, { standard: ["3", "1"], primeUnavailable: true });
 
-  await page.locator("#reset-button").click();
+  await setBasis(page, ["0", "0", "0", "1"]);
+  assert.equal(await page.locator('[data-arrow="basis-prime-e1"][data-zero-vector="true"]').count(), 1);
+  assert.equal(await page.locator('[data-annotation="e′₁"]').count(), 1);
+
+  await restoreDefaultBasis(page);
   assert.equal(await page.locator("#basis-status").textContent(), "Valid basis");
   assert.equal(await page.locator("#prime-components-toggle").isDisabled(), false);
-  assert.equal(await page.locator('[data-layer="selected-vector"] > *').count(), 0);
-
-  for (const [id, value] of [
-    ["#basis-first-x", "1"],
-    ["#basis-first-y", "0"],
-    ["#basis-second-x", "0"],
-    ["#basis-second-y", "1"]
-  ]) {
-    await page.locator(id).fill(value);
+  if (!(await page.locator("#prime-components-toggle").isChecked())) {
+    await page.locator('label[for="prime-components-toggle"]').click();
   }
-  await page.locator('#basis-form button[type="submit"]').click();
-  assert.ok(
-    Number(await page.locator('[data-arrow="basis-e1"]').getAttribute("stroke-width")) >
-      Number(await page.locator('[data-arrow="basis-prime-e1"]').getAttribute("stroke-width"))
-  );
-  assert.ok(await page.locator('[data-arrow="basis-prime-e1"]').getAttribute("stroke-dasharray"));
-  assert.ok(
-    Number(await page.locator('[data-arrow="basis-e2"]').getAttribute("stroke-width")) >
-      Number(await page.locator('[data-arrow="basis-prime-e2"]').getAttribute("stroke-width"))
-  );
-  assert.ok(await page.locator('[data-arrow="basis-prime-e2"]').getAttribute("stroke-dasharray"));
-  await page.locator("#reset-button").click();
 }
 
-async function assertBoundsValidation(page) {
-  const originalFrameWidth = Number(await page.locator('[data-plot-frame="true"]').getAttribute("width"));
-  await page.locator("#x-min-input").fill("4");
-  await page.locator("#x-max-input").fill("-4");
-  await page.locator("#apply-bounds-button").click();
-  assert.match(await page.locator("#bounds-form-error").textContent(), /x min < x max/);
-  assert.equal(
-    Number(await page.locator('[data-plot-frame="true"]').getAttribute("width")),
-    originalFrameWidth,
-    "Invalid bounds must retain the applied plot geometry."
-  );
-
-  await page.locator("#x-min-input").fill("-1e308");
-  await page.locator("#x-max-input").fill("1e308");
-  await page.locator("#apply-bounds-button").click();
-  assert.match(await page.locator("#bounds-form-error").textContent(), /finite spans/);
-  assert.equal(
-    Number(await page.locator('[data-plot-frame="true"]').getAttribute("width")),
-    originalFrameWidth,
-    "Overflowing bounds must retain the applied plot geometry."
-  );
-
-  await page.locator("#x-min-input").fill("");
-  await page.locator("#apply-bounds-button").click();
-  assert.match(await page.locator("#bounds-form-error").textContent(), /finite number/);
-  assert.equal(await page.locator("#x-min-input").getAttribute("aria-invalid"), "true");
-  assert.equal(await page.locator("#x-max-input").getAttribute("aria-invalid"), null);
-
-  await page.locator("#x-min-input").fill("100000000000000000000");
-  await page.locator("#x-max-input").fill("100000000000000016384");
-  await page.locator("#y-min-input").fill("-1");
-  await page.locator("#y-max-input").fill("1");
-  await page.locator("#apply-bounds-button").click();
-  assert.equal(await page.locator("#bounds-form-error").textContent(), "");
-  assert.ok(
-    (await page.locator('[data-layer="tick-labels"] text').count()) <= 128,
-    "Large-offset ranges must keep tick generation bounded."
-  );
-
-  for (const [id, value] of [
-    ["#x-min-input", "10"],
-    ["#x-max-input", "20"],
-    ["#y-min-input", "10"],
-    ["#y-max-input", "20"]
-  ]) {
-    await page.locator(id).fill(value);
-  }
-  await page.locator("#apply-bounds-button").click();
-  assert.equal(await page.locator('[data-annotation="e₁"]').count(), 0);
-  assert.equal(await page.locator('[data-annotation="e₂"]').count(), 0);
-  assert.equal(await page.locator('[data-annotation="e′₁"]').count(), 0);
-  assert.equal(await page.locator('[data-annotation="e′₂"]').count(), 0);
-
-  await page.locator("#reset-button").click();
-
-  for (const [id, value] of [
-    ["#x-min-input", "-1e300"],
-    ["#x-max-input", "1e300"],
-    ["#y-min-input", "-1e300"],
-    ["#y-max-input", "1e300"]
-  ]) {
-    await page.locator(id).fill(value);
-  }
-  await page.locator("#apply-bounds-button").click();
-  await page.locator("#vector-x").fill("1");
-  await page.locator("#vector-y").fill("0");
-  await page.locator("#vector-y").press("Enter");
-  assert.equal(
-    await page.locator('[data-arrow="selected-vector"][data-zero-vector="true"]').count(),
-    0,
-    "A nonzero subpixel vector must not be drawn as a zero vector."
-  );
-  await page.locator("#reset-button").click();
-
-  await page.locator("#y-min-input").fill("-2");
-  await page.locator("#y-max-input").fill("2");
-  await page.locator("#apply-bounds-button").click();
-  const letterboxedFrame = await page.locator('[data-plot-frame="true"]').evaluate((node) => ({
-    width: Number(node.getAttribute("width")),
-    height: Number(node.getAttribute("height")),
-    y: Number(node.getAttribute("y"))
-  }));
-  assert.ok(Math.abs(letterboxedFrame.width / letterboxedFrame.height - 2) < 0.01);
-  assert.ok(letterboxedFrame.y > 48, "Unequal ranges must be centered with letterboxing.");
-  await page.locator("#reset-button").click();
-}
-
-async function assertResponsiveLayout(page) {
+async function assertResponsiveCanvas(page) {
   const viewports = [
-    { width: 1180, height: 780 },
     { width: 1440, height: 900 },
-    { width: 1920, height: 1080 },
-    { width: 1536, height: 730 },
+    { width: 980, height: 700 },
     { width: 641, height: 900 },
     { width: 640, height: 900 },
     { width: 390, height: 844 },
     { width: 320, height: 800 }
   ];
-  let tickHeightAt641 = null;
-
   for (const viewport of viewports) {
     await page.setViewportSize(viewport);
-    await page.waitForTimeout(80);
-    const measurements = await page.evaluate(() => {
-      const square = document.querySelector(".plot-square")?.getBoundingClientRect();
-      const documentWidth = document.documentElement.scrollWidth;
-      const documentHeight = document.documentElement.scrollHeight;
-      return square
+    await page.waitForTimeout(100);
+    const layout = await page.evaluate(() => {
+      const canvas = document.querySelector("#basis-plot")?.getBoundingClientRect();
+      const rail = document.querySelector(".control-rail")?.getBoundingClientRect();
+      const frame = document.querySelector('[data-plot-frame="true"]')?.getBoundingClientRect();
+      const coordinateCard = document.querySelector("#vector-coordinates-card")?.getBoundingClientRect();
+      const themeToggle = document.querySelector("#theme-toggle")?.getBoundingClientRect();
+      return canvas && rail && frame && coordinateCard && themeToggle
         ? {
-            squareWidth: square.width,
-            squareHeight: square.height,
-            documentWidth,
-            documentHeight
+            canvas: { width: canvas.width, height: canvas.height },
+            rail: { x: rail.x, y: rail.y, width: rail.width, height: rail.height },
+            frame: { width: frame.width, height: frame.height },
+            coordinateCard: {
+              x: coordinateCard.x,
+              y: coordinateCard.y,
+              width: coordinateCard.width,
+              height: coordinateCard.height
+            },
+            themeToggle: {
+              x: themeToggle.x,
+              y: themeToggle.y,
+              width: themeToggle.width,
+              height: themeToggle.height
+            },
+            scrollWidth: document.documentElement.scrollWidth,
+            scrollHeight: document.documentElement.scrollHeight
           }
         : null;
     });
-    assert.ok(measurements, "Responsive plot measurements must exist.");
+    assert.ok(layout);
+    assert.ok(Math.abs(layout.canvas.width - viewport.width) <= 2);
+    assert.ok(Math.abs(layout.canvas.height - viewport.height) <= 2);
+    assert.ok(layout.rail.x >= 0 && layout.rail.width <= viewport.width);
+    assert.ok(layout.rail.height <= viewport.height + 1);
+    assert.ok(layout.scrollWidth <= viewport.width + 1);
+    assert.ok(layout.scrollHeight <= viewport.height + 1);
     assert.ok(
-      Math.abs(measurements.squareWidth - measurements.squareHeight) <= 1,
-      `Plot must remain square at ${viewport.width}x${viewport.height}.`
+      layout.coordinateCard.width <= Math.min(340, viewport.width - 6),
+      "The enlarged coordinate card must still fit within the viewport."
     );
+    assert.ok(layout.coordinateCard.height <= 190, "The coordinate card must remain compact.");
     assert.ok(
-      measurements.documentWidth <= viewport.width + 1,
-      `Layout must not overflow horizontally at ${viewport.width}x${viewport.height}.`
+      layout.coordinateCard.x + layout.coordinateCard.width >= viewport.width - 24,
+      "The coordinate card must stay in the top-right corner."
     );
-    if (viewport.width > 980) {
-      assert.ok(
-        measurements.documentHeight <= viewport.height + 1,
-        `Desktop page must stay within the viewport at ${viewport.width}x${viewport.height}.`
-      );
-    }
-    if (viewport.width <= 641) {
-      const tickBox = await page.locator('[data-layer="tick-labels"] text').first().boundingBox();
-      assert.ok(tickBox && tickBox.height >= 10, "Ticks must remain legible after a viewport resize.");
-      if (viewport.width === 641) {
-        tickHeightAt641 = tickBox.height;
-      }
-      if (viewport.width === 640 && tickHeightAt641 !== null) {
-        assert.ok(
-          Math.abs(tickBox.height - tickHeightAt641) <= 2,
-          "Tick typography must not jump at the 640px breakpoint."
-        );
-      }
+    assert.ok(layout.coordinateCard.y <= 24, "The coordinate card must stay near the top edge.");
+    assert.equal(
+      rectanglesOverlap(layout.rail, layout.coordinateCard),
+      false,
+      "The coordinate card must not obstruct the controls."
+    );
+    assert.ok(layout.themeToggle.x >= 0 && layout.themeToggle.x <= 24);
+    assert.ok(
+      viewport.height - (layout.themeToggle.y + layout.themeToggle.height) <= 24,
+      "The theme toggle must stay in the bottom-left corner."
+    );
+    assert.ok(layout.themeToggle.width <= 180 && layout.themeToggle.height <= 58);
+    assert.equal(
+      rectanglesOverlap(layout.rail, layout.themeToggle),
+      false,
+      "The theme toggle must not obstruct the controls."
+    );
+    assert.equal(
+      rectanglesOverlap(layout.coordinateCard, layout.themeToggle),
+      false,
+      "The theme toggle must not obstruct the coordinate card."
+    );
+    if (viewport.width > viewport.height) {
+      assert.ok(layout.frame.width > layout.frame.height, "A landscape grid must fill horizontally.");
+    } else {
+      assert.ok(layout.frame.height > layout.frame.width, "A portrait grid must fill vertically.");
     }
 
+    const e1 = await readArrow(page, "basis-e1");
+    const e2 = await readArrow(page, "basis-e2");
+    assert.ok(Math.abs(Math.abs(e1.x2 - e1.x1) - Math.abs(e2.y2 - e2.y1)) < 0.01);
+
     if (viewport.width === 320) {
-      for (const [id, value] of [
-        ["#x-min-input", "-1000000"],
-        ["#x-max-input", "1000000"],
-        ["#y-min-input", "-1000000"],
-        ["#y-max-input", "1000000"]
-      ]) {
-        await page.locator(id).fill(value);
-      }
-      await page.locator("#apply-bounds-button").click();
-      const tickLabels = page.locator('[data-layer="tick-labels"] text');
-      assert.ok((await tickLabels.count()) <= 10, "Mobile tick count must adapt to CSS size.");
-      const firstTickBox = await tickLabels.first().boundingBox();
-      assert.ok(firstTickBox && firstTickBox.height >= 10, "Mobile tick labels must remain legible.");
-      await page.locator("#reset-button").click();
-      await page.locator(".plot-panel").screenshot({
+      await page.locator(".control-rail").screenshot({
         path: new URL("browser-smoke-mobile.png", artifactDir).pathname
       });
     }
   }
 }
 
-async function assertResponsiveResizeReflow(page) {
-  await page.setViewportSize({ width: 1440, height: 900 });
-  for (const [id, value] of [
-    ["#basis-first-x", "1"],
-    ["#basis-first-y", "1"],
-    ["#basis-second-x", "1"],
-    ["#basis-second-y", "1"]
-  ]) {
-    await page.locator(id).fill(value);
-  }
-  await page.locator('#basis-form button[type="submit"]').click();
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.waitForTimeout(100);
-
-  const first = await page.locator('[data-annotation="e′₁"]').boundingBox();
-  const second = await page.locator('[data-annotation="e′₂"]').boundingBox();
-  assert.ok(first && second);
-  assert.ok(
-    Math.hypot(
-      first.x + first.width / 2 - (second.x + second.width / 2),
-      first.y + first.height / 2 - (second.y + second.height / 2)
-    ) >= 16,
-    "Coincident labels must be reflowed after resize."
-  );
-  const tickBox = await page.locator('[data-layer="tick-labels"] text').first().boundingBox();
-  assert.ok(tickBox && tickBox.height >= 10, "Resize-only reflow must keep ticks legible.");
-
-  await page.locator("#reset-button").click();
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await page.waitForTimeout(100);
+async function assertIntegerGridGeometry(page) {
+  const result = await page.locator("#basis-plot").evaluate((svg) => {
+    const grid = svg.querySelector('[data-layer="grid"] path');
+    const e1 = svg.querySelector('[data-arrow="basis-e1"]');
+    const e2 = svg.querySelector('[data-arrow="basis-e2"]');
+    if (!grid || !e1 || !e2) {
+      return null;
+    }
+    const originX = Number(e1.getAttribute("x1"));
+    const originY = Number(e1.getAttribute("y1"));
+    const unitX = Number(e1.getAttribute("x2")) - originX;
+    const unitY = Number(e2.getAttribute("y2")) - Number(e2.getAttribute("y1"));
+    const commands = [...(grid.getAttribute("d") ?? "").matchAll(
+      /M ([\d.-]+) ([\d.-]+) L ([\d.-]+) ([\d.-]+)/g
+    )].map((match) => match.slice(1).map(Number));
+    return {
+      count: commands.length,
+      integral: commands.every(([x1, y1, x2, y2]) => {
+        const coordinate = x1 === x2 ? (x1 - originX) / unitX : (y1 - originY) / unitY;
+        return Math.abs(coordinate - Math.round(coordinate)) < 1e-3;
+      })
+    };
+  });
+  assert.ok(result && result.count > 10);
+  assert.equal(result.integral, true, "Every rendered grid line must represent an integer.");
 }
 
-async function assertKeyboardAccessibility(page) {
-  assert.equal(await page.locator("#basis-first-x").getAttribute("inputmode"), "text");
-  assert.equal(await page.locator("#plot-heading").evaluate((node) => node.tagName), "H2");
-  await page.locator("#set-vector-button").focus();
-  const focusStyle = await page.locator("#set-vector-button").evaluate((node) => {
-    const style = getComputedStyle(node);
-    return { width: style.outlineWidth, style: style.outlineStyle };
+async function setBasis(page, [firstX, firstY, secondX, secondY]) {
+  await page.locator("#basis-first-x").fill(firstX);
+  await page.locator("#basis-first-y").fill(firstY);
+  await page.locator("#basis-second-x").fill(secondX);
+  await page.locator("#basis-second-y").fill(secondY);
+  await page.locator('#basis-form button[type="submit"]').click();
+}
+
+async function restoreDefaultBasis(page) {
+  await setBasis(page, ["1", "1", "-1", "1"]);
+}
+
+async function setVector(page, x, y) {
+  await page.locator("#vector-x").fill(x);
+  await page.locator("#vector-y").fill(y);
+  await page.locator("#vector-form").evaluate((form) => form.requestSubmit());
+}
+
+async function assertCoordinateCard(page, { standard, prime, primeUnavailable = false }) {
+  const card = page.locator("#vector-coordinates-card");
+  assert.equal(await card.isVisible(), true);
+  await assertKatexColumn(page, "#vector-coordinate-standard", standard, {
+    basis: "B",
+    colors: ["#1B7F5A", "#C4454D"],
+    renderedColors: ["rgb(27, 127, 90)", "rgb(196, 69, 77)"]
   });
-  assert.equal(focusStyle.style, "solid");
-  assert.ok(Number.parseFloat(focusStyle.width) >= 3, "Keyboard focus must use a strong ring.");
+  const coordinateFontSize = await page
+    .locator("#vector-coordinate-standard .katex")
+    .evaluate((node) => Number.parseFloat(getComputedStyle(node).fontSize));
+  assert.ok(coordinateFontSize >= 19, "The enlarged coordinate card must remain readable.");
+
+  const primeOutput = page.locator("#vector-coordinate-prime");
+  if (primeUnavailable) {
+    assert.equal(
+      await primeOutput.locator(".katex").count(),
+      1,
+      "The unavailable B' coordinate must retain its KaTeX basis notation."
+    );
+    assert.match((await primeOutput.textContent()) ?? "", /unavailable/i);
+  } else if (prime) {
+    await assertKatexColumn(page, "#vector-coordinate-prime", prime, {
+      basis: "B'",
+      colors: ["#2F6FDB", "#7B4DB3"],
+      renderedColors: ["rgb(47, 111, 219)", "rgb(123, 77, 179)"]
+    });
+  }
+}
+
+async function assertKatexColumn(
+  page,
+  selector,
+  [x, y],
+  { basis, colors, renderedColors }
+) {
+  const output = page.locator(selector);
+  assert.equal(await output.locator(".katex").count(), 1, `${selector} must be rendered by KaTeX.`);
+  const source = normalizeMath(await output.locator(".katex-mathml annotation").textContent());
+  const expectedColumn =
+    `\\begin{bmatrix}\\color{${colors[0]}}{${x}}` +
+    `\\\\[0.4em]\\color{${colors[1]}}{${y}}\\end{bmatrix}_{${basis}}`;
+  assert.ok(
+    source.includes(expectedColumn),
+    `${selector} must contain the colored, basis-labeled column ${expectedColumn}; received ${source}.`
+  );
+  const computedColors = await output.locator(".katex-html *").evaluateAll((nodes) => [
+    ...new Set(nodes.map((node) => getComputedStyle(node).color))
+  ]);
+  renderedColors.forEach((color) => {
+    assert.ok(computedColors.includes(color), `${selector} must render the component color ${color}.`);
+  });
+}
+
+function rectanglesOverlap(first, second) {
+  return !(
+    first.x + first.width <= second.x ||
+    second.x + second.width <= first.x ||
+    first.y + first.height <= second.y ||
+    second.y + second.height <= first.y
+  );
 }
 
 async function readArrow(page, name) {

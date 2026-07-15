@@ -5,15 +5,11 @@ import { numberToExactRational, snapPlotPoint } from "../plot/snap";
 const bounds = { xMin: -4, xMax: 4, yMin: -4, yMax: 4 };
 
 describe("snapPlotPoint", () => {
-  it("snaps to the closest major-grid intersection within ten pixels", () => {
+  it("selects the nearest integer-grid intersection for every click", () => {
     const result = snapPlotPoint(
-      { x: 1.08, y: -1.94 },
+      { x: 1.41, y: -1.62 },
       {
-        bounds,
-        scaleX: 100,
-        scaleY: 100,
-        xTicks: [-4, -2, 0, 1, 2, 4],
-        yTicks: [-4, -2, 0, 2, 4]
+        bounds
       }
     );
 
@@ -34,76 +30,38 @@ describe("snapPlotPoint", () => {
     });
   });
 
-  it("always makes a visible axis an exact snap target", () => {
+  it("returns exact integer coordinates for every selected grid point", () => {
     const result = snapPlotPoint(
-      { x: 0.04, y: 1.37 },
+      { x: -2.49, y: 0.49 },
       {
-        bounds,
-        scaleX: 150,
-        scaleY: 100,
-        xTicks: [-4, -2, 2, 4],
-        yTicks: [-4, -2, 2, 4]
+        bounds
       }
     );
 
-    expect(result.point).toEqual({ x: 0, y: 1.37 });
-    expect(result.vector.x.kind).toBe("exact");
-    expect(result.vector.y).toEqual({
-      kind: "approximate",
-      value: 1.37,
-      source: "click"
+    expect(result.point).toEqual({ x: -2, y: 0 });
+    expect(result.snappedX).toBe(true);
+    expect(result.snappedY).toBe(true);
+    expect(result.vector).toEqual({
+      x: {
+        kind: "exact",
+        value: { numerator: -2n, denominator: 1n },
+        source: "snap"
+      },
+      y: {
+        kind: "exact",
+        value: { numerator: 0n, denominator: 1n },
+        source: "snap"
+      }
     });
   });
 
-  it("does not snap outside the pixel threshold and rounds free clicks", () => {
+  it("keeps rounded selections on a visible lattice point at fractional plot edges", () => {
     const result = snapPlotPoint(
-      { x: 1.101, y: -0.123456 },
-      {
-        bounds,
-        scaleX: 100,
-        scaleY: 100,
-        xTicks: [0, 1, 2],
-        yTicks: [-1, 0, 1]
-      }
+      { x: 4.4, y: -4.4 },
+      { bounds: { xMin: -4.25, xMax: 4.25, yMin: -4.25, yMax: 4.25 } }
     );
 
-    expect(result.point).toEqual({ x: 1.101, y: -0.1235 });
-    expect(result.snappedX).toBe(false);
-    expect(result.snappedY).toBe(false);
-    expect(result.vector.x.kind).toBe("approximate");
-  });
-
-  it("does not partially snap to a non-axis grid line", () => {
-    const result = snapPlotPoint(
-      { x: 2.04, y: 1.37 },
-      {
-        bounds,
-        scaleX: 100,
-        scaleY: 100,
-        xTicks: [-2, 0, 2],
-        yTicks: [-2, 0, 2]
-      }
-    );
-
-    expect(result.point).toEqual({ x: 2.04, y: 1.37 });
-    expect(result.snappedX).toBe(false);
-    expect(result.snappedY).toBe(false);
-  });
-
-  it("uses rendered CSS scale rather than view-box size", () => {
-    const result = snapPlotPoint(
-      { x: 1.15, y: 3 },
-      {
-        bounds,
-        scaleX: 50,
-        scaleY: 50,
-        xTicks: [1],
-        yTicks: [3]
-      }
-    );
-
-    expect(result.point.x).toBe(1);
-    expect(result.snappedX).toBe(true);
+    expect(result.point).toEqual({ x: 4, y: -4 });
   });
 });
 
