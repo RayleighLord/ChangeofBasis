@@ -239,6 +239,23 @@ async function assertVectorWorkflow(page) {
   assert.equal(await page.locator('[data-arrow="component-standard-e2"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="component-prime-e1"]').count(), 1);
   assert.equal(await page.locator('[data-arrow="component-prime-e2"]').count(), 1);
+  const componentDashPatterns = await page
+    .locator('[data-arrow^="component-"]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("stroke-dasharray")));
+  assert.deepEqual(
+    componentDashPatterns,
+    ["10 7", "10 7", "10 7", "10 7"],
+    "Both standard- and prime-basis decompositions must use the same dashed style."
+  );
+  const arrowLineCaps = await page
+    .locator('line[data-arrow]')
+    .evaluateAll((nodes) => nodes.map((node) => node.getAttribute("stroke-linecap")));
+  assert.ok(arrowLineCaps.length > 0);
+  assert.equal(
+    arrowLineCaps.every((lineCap) => lineCap === "butt"),
+    true,
+    "Arrow shafts must stop cleanly beneath their tips."
+  );
   assert.match(await page.locator("#interaction-status").textContent(), /Vector set/);
   await assertCoordinateCard(page, { standard: ["3", "1"], prime: ["2", "-1"] });
 

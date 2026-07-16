@@ -499,7 +499,8 @@ export class ChangeOfBasisPlotRenderer {
           markerId: `${this.instanceId}-standard-first`,
           dataName: "component-standard-e1",
           width: 4,
-          opacity: 0.78
+          opacity: 0.78,
+          dashed: true
         }
       );
       const drewSecond = this.drawArrow(
@@ -512,7 +513,8 @@ export class ChangeOfBasisPlotRenderer {
           markerId: `${this.instanceId}-standard-second`,
           dataName: "component-standard-e2",
           width: 4,
-          opacity: 0.78
+          opacity: 0.78,
+          dashed: true
         }
       );
 
@@ -656,7 +658,7 @@ export class ChangeOfBasisPlotRenderer {
         fill: "none",
         stroke: options.color,
         "stroke-width": options.width ?? 4,
-        "stroke-linecap": "round",
+        "stroke-linecap": "butt",
         "stroke-linejoin": "round",
         opacity: options.opacity ?? 1,
         "stroke-dasharray": options.dashed ? "10 7" : undefined,
